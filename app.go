@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"os"
-	"path/filepath"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -15,18 +14,13 @@ type App struct {
 	agent    *Agent
 }
 
-func NewApp() *App {
-	return &App{}
+func NewApp(store *Store) *App {
+	return &App{store: store}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	store, err := NewStore()
-	if err != nil {
-		store = &Store{path: filepath.Join(dataDir(), "conduit.json"), data: storeData{Settings: defaultSettings()}}
-	}
-	a.store = store
-	a.sessions = NewSessionManager(store)
+	a.sessions = NewSessionManager(a.store)
 	a.sessions.emit = func(name string, args ...interface{}) {
 		runtime.EventsEmit(ctx, name, args...)
 	}
@@ -97,6 +91,10 @@ func (a *App) Resize(id string, cols, rows int) error {
 
 func (a *App) Disconnect(id string) {
 	a.sessions.Disconnect(id)
+}
+
+func (a *App) ScreenReply(requestID, text string) {
+	a.sessions.screenReply(requestID, text)
 }
 
 func (a *App) ListSessions() []SessionInfo {

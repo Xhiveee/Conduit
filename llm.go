@@ -12,11 +12,11 @@ import (
 )
 
 type chatMessage struct {
-	Role       string          `json:"role"`
-	Content    string          `json:"content"`
-	ToolCalls  []llmToolCall   `json:"tool_calls,omitempty"`
-	ToolCallID string          `json:"tool_call_id,omitempty"`
-	Name       string          `json:"name,omitempty"`
+	Role       string        `json:"role"`
+	Content    string        `json:"content"`
+	ToolCalls  []llmToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string        `json:"tool_call_id,omitempty"`
+	Name       string        `json:"name,omitempty"`
 }
 
 type llmToolCall struct {
@@ -38,10 +38,10 @@ type llmTool struct {
 }
 
 type chatRequest struct {
-	Model      string          `json:"model"`
-	Messages   []chatMessage   `json:"messages"`
-	Tools      []llmTool       `json:"tools,omitempty"`
-	ToolChoice string          `json:"tool_choice,omitempty"`
+	Model      string        `json:"model"`
+	Messages   []chatMessage `json:"messages"`
+	Tools      []llmTool     `json:"tools,omitempty"`
+	ToolChoice string        `json:"tool_choice,omitempty"`
 }
 
 type chatResponse struct {

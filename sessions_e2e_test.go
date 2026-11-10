@@ -106,6 +106,10 @@ func TestE2EPasswordSession(t *testing.T) {
 	if !strings.Contains(string(kh), host) {
 		t.Fatalf("known_hosts missing host: %q", string(kh))
 	}
+
+	if _, err := mgr.readScreen(ctx, id, 10); err == nil || !strings.Contains(err.Error(), "terminal view not available") {
+		t.Fatalf("readScreen without frontend: %v", err)
+	}
 }
 
 func TestE2EKeyAuth(t *testing.T) {

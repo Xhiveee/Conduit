@@ -22,13 +22,13 @@ type agentToolEvent struct {
 }
 
 type Agent struct {
-	app     *App
-	mu      sync.Mutex
+	app      *App
+	mu       sync.Mutex
 	messages []chatMessage
-	cancel  context.CancelFunc
-	running bool
-	gen     int
-	pending map[string]chan bool
+	cancel   context.CancelFunc
+	running  bool
+	gen      int
+	pending  map[string]chan bool
 }
 
 func NewAgent(app *App) *Agent {
@@ -127,6 +127,9 @@ func (a *Agent) run(ctx context.Context, cfg AISettings, gen int) {
 		if len(msg.ToolCalls) == 0 {
 			a.app.emit("agent:message", agentMessage{Role: "assistant", Content: msg.Content})
 			break
+		}
+		if strings.TrimSpace(msg.Content) != "" {
+			a.app.emit("agent:message", agentMessage{Role: "assistant", Content: msg.Content})
 		}
 		for _, call := range msg.ToolCalls {
 			result := a.execTool(ctx, cfg, call)
@@ -342,7 +345,7 @@ func (a *Agent) dispatchTool(ctx context.Context, name string, args json.RawMess
 		if err := json.Unmarshal(args, &in); err != nil {
 			return "", err
 		}
-		screen, err := a.app.sessions.readScreen(in.SessionID, in.Lines)
+		screen, err := a.app.sessions.readScreen(ctx, in.SessionID, in.Lines)
 		if err != nil {
 			return "", err
 		}
@@ -485,13 +488,13 @@ func applyHostFields(h *Host, f hostFields) {
 }
 
 type uiSettingsPatch struct {
-	FontSize        *int     `json:"fontSize"`
-	FontFamily      *string  `json:"fontFamily"`
-	LineHeight      *float64 `json:"lineHeight"`
-	CursorStyle     *string  `json:"cursorStyle"`
-	UIScale         *float64 `json:"uiScale"`
-	SidebarVisible  *bool    `json:"sidebarVisible"`
-	AgentVisible    *bool    `json:"agentVisible"`
-	AgentSide       *string  `json:"agentSide"`
-	ThemeID         *string  `json:"themeId"`
+	FontSize       *int     `json:"fontSize"`
+	FontFamily     *string  `json:"fontFamily"`
+	LineHeight     *float64 `json:"lineHeight"`
+	CursorStyle    *string  `json:"cursorStyle"`
+	UIScale        *float64 `json:"uiScale"`
+	SidebarVisible *bool    `json:"sidebarVisible"`
+	AgentVisible   *bool    `json:"agentVisible"`
+	AgentSide      *string  `json:"agentSide"`
+	ThemeID        *string  `json:"themeId"`
 }

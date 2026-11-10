@@ -9,16 +9,30 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 	"github.com/wailsapp/wails/v2/pkg/options/windows"
+	xwindows "golang.org/x/sys/windows"
 )
 
 //go:embed all:frontend/dist
 var assets embed.FS
 
+func fatal(err error) {
+	text, _ := xwindows.UTF16PtrFromString(err.Error())
+	caption, _ := xwindows.UTF16PtrFromString("Conduit")
+	xwindows.MessageBox(0, text, caption, xwindows.MB_OK|xwindows.MB_ICONERROR|xwindows.MB_SETFOREGROUND)
+	os.Exit(1)
+}
+
 func main() {
-	app := NewApp()
 	webviewDir := filepath.Join(dataDir(), "webview")
-	os.MkdirAll(webviewDir, 0o755)
-	err := wails.Run(&options.App{
+	if err := os.MkdirAll(webviewDir, 0o755); err != nil {
+		fatal(err)
+	}
+	store, err := NewStore()
+	if err != nil {
+		fatal(err)
+	}
+	app := NewApp(store)
+	err = wails.Run(&options.App{
 		Title:     "Conduit",
 		Width:     1360,
 		Height:    860,
@@ -38,6 +52,6 @@ func main() {
 		},
 	})
 	if err != nil {
-		println("Error:", err.Error())
+		fatal(err)
 	}
 }

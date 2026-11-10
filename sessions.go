@@ -21,10 +21,10 @@ import (
 )
 
 const (
-	ringBufferSize   = 512 * 1024
 	commandOutputMax = 16 * 1024
 	sshDialTimeout   = 15 * time.Second
 	keepaliveEvery   = 30 * time.Second
+	screenReplyWait  = 3 * time.Second
 )
 
 type SessionInfo struct {
@@ -42,39 +42,11 @@ type CommandResult struct {
 	Status string `json:"status"`
 }
 
-type ringBuffer struct {
-	mu   sync.Mutex
-	data []byte
-	max  int
-}
-
-func newRingBuffer(max int) *ringBuffer {
-	return &ringBuffer{max: max}
-}
-
-func (r *ringBuffer) Write(p []byte) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.data = append(r.data, p...)
-	if len(r.data) > r.max {
-		r.data = append([]byte(nil), r.data[len(r.data)-r.max:]...)
-	}
-}
-
-func (r *ringBuffer) Bytes() []byte {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	out := make([]byte, len(r.data))
-	copy(out, r.data)
-	return out
-}
-
 type Session struct {
 	info       SessionInfo
 	client     *ssh.Client
 	sshSession *ssh.Session
 	stdin      io.WriteCloser
-	ring       *ringBuffer
 	mgr        *SessionManager
 	mu         sync.Mutex
 	subs       map[chan []byte]struct{}
@@ -84,14 +56,15 @@ type Session struct {
 }
 
 type SessionManager struct {
-	store *Store
-	emit  func(name string, args ...interface{})
-	mu    sync.Mutex
-	byID  map[string]*Session
+	store      *Store
+	emit       func(name string, args ...interface{})
+	mu         sync.Mutex
+	byID       map[string]*Session
+	screenReqs map[string]chan string
 }
 
 func NewSessionManager(store *Store) *SessionManager {
-	return &SessionManager{store: store, byID: make(map[string]*Session)}
+	return &SessionManager{store: store, byID: make(map[string]*Session), screenReqs: make(map[string]chan string)}
 }
 
 func (m *SessionManager) emitEvent(name string, args ...interface{}) {
@@ -235,7 +208,6 @@ func (m *SessionManager) connect(h Host, cols, rows int) (string, error) {
 		client:     client,
 		sshSession: sess,
 		stdin:      stdin,
-		ring:       newRingBuffer(ringBufferSize),
 		mgr:        m,
 		subs:       make(map[chan []byte]struct{}),
 		closed:     make(chan struct{}),
@@ -275,7 +247,6 @@ func (s *Session) pump(r io.Reader) {
 }
 
 func (s *Session) onData(p []byte) {
-	s.ring.Write(p)
 	cp := make([]byte, len(p))
 	copy(cp, p)
 	s.mgr.emitEvent("session:data", s.info.ID, base64.StdEncoding.EncodeToString(cp))
@@ -547,6 +518,9 @@ func (m *SessionManager) runInSession(ctx context.Context, id, command string, t
 			if now.Sub(start) >= time.Duration(timeoutSec)*time.Second {
 				return CommandResult{Output: cleanCommandOutput(text, command), Status: "timeout"}, nil
 			}
+		case <-s.closed:
+			text := stripANSI(buf.String())
+			return CommandResult{Output: cleanCommandOutput(text, command), Status: "session_closed"}, nil
 		case <-ctx.Done():
 			return CommandResult{}, ctx.Err()
 		}
@@ -577,7 +551,7 @@ func cleanCommandOutput(text, command string) string {
 	return truncateMiddle(strings.TrimRight(text, "\n"), commandOutputMax)
 }
 
-func (m *SessionManager) readScreen(id string, lines int) (string, error) {
+func (m *SessionManager) readScreen(ctx context.Context, id string, lines int) (string, error) {
 	s := m.get(id)
 	if s == nil {
 		return "", fmt.Errorf("session not found")
@@ -585,15 +559,39 @@ func (m *SessionManager) readScreen(id string, lines int) (string, error) {
 	if lines <= 0 {
 		lines = 60
 	}
-	text := stripANSI(string(s.ring.Bytes()))
-	ls := strings.Split(text, "\n")
-	for len(ls) > 0 && strings.TrimSpace(ls[len(ls)-1]) == "" {
-		ls = ls[:len(ls)-1]
+	requestID := uuid.NewString()
+	ch := make(chan string, 1)
+	m.mu.Lock()
+	m.screenReqs[requestID] = ch
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		delete(m.screenReqs, requestID)
+		m.mu.Unlock()
+	}()
+	m.emitEvent("screen:request", requestID, id, lines)
+	select {
+	case text := <-ch:
+		return text, nil
+	case <-time.After(screenReplyWait):
+		return "", fmt.Errorf("terminal view not available")
+	case <-s.closed:
+		return "", fmt.Errorf("session closed")
+	case <-ctx.Done():
+		return "", ctx.Err()
 	}
-	if len(ls) > lines {
-		ls = ls[len(ls)-lines:]
+}
+
+func (m *SessionManager) screenReply(requestID, text string) {
+	m.mu.Lock()
+	ch, ok := m.screenReqs[requestID]
+	if ok {
+		delete(m.screenReqs, requestID)
 	}
-	return strings.Join(ls, "\n"), nil
+	m.mu.Unlock()
+	if ok {
+		ch <- text
+	}
 }
 
 func (m *SessionManager) sendKeys(id, keys string) error {
