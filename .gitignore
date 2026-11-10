@@ -4,3 +4,4 @@ data
 .clean
 node_modules
 frontend/dist
+frontend/package.json.md5

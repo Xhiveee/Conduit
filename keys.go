@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -96,7 +95,7 @@ func inspectKeyFile(path string) (KeyInfo, bool) {
 	}
 	key, err := ssh.ParseRawPrivateKey(raw)
 	if err == nil {
-		if signer, ok := key.(ssh.Signer); ok {
+		if signer, serr := ssh.NewSignerFromKey(key); serr == nil {
 			return keyInfoFromSigner(path, signer), true
 		}
 		return KeyInfo{}, false
@@ -177,9 +176,5 @@ func parseKeyFile(path, passphrase string) (ssh.Signer, error) {
 			return nil, err
 		}
 	}
-	signer, ok := key.(ssh.Signer)
-	if !ok {
-		return nil, fmt.Errorf("key %s is not a signer", path)
-	}
-	return signer, nil
+	return ssh.NewSignerFromKey(key)
 }
