@@ -54,6 +54,20 @@ function update(patch: Partial<main.Settings>) {
     persist();
 }
 
+interface SettingsSection {
+    id: string;
+    label: string;
+    render: (pane: HTMLElement) => void;
+}
+
+const SECTIONS: SettingsSection[] = [
+    { id: 'appearance', label: 'Appearance', render: renderAppearance },
+    { id: 'themes', label: 'Themes', render: renderThemes },
+    { id: 'terminal', label: 'Terminal', render: renderTerminal },
+    { id: 'agent', label: 'Agent', render: renderAgentSection },
+    { id: 'css', label: 'Custom CSS', render: renderCustomCSS },
+];
+
 export function openSettings() {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -72,8 +86,17 @@ export function openSettings() {
     modal.appendChild(head);
 
     const body = document.createElement('div');
-    body.className = 'modal-body';
+    body.className = 'modal-body set-body';
     modal.appendChild(body);
+
+    const layout = document.createElement('div');
+    layout.className = 'set-layout';
+    const nav = document.createElement('div');
+    nav.className = 'set-nav';
+    const pane = document.createElement('div');
+    pane.className = 'set-pane';
+    layout.append(nav, pane);
+    body.appendChild(layout);
 
     const foot = document.createElement('div');
     foot.className = 'modal-foot';
@@ -87,20 +110,32 @@ export function openSettings() {
     document.getElementById('modal-root')!.appendChild(overlay);
     overlay.addEventListener('mousedown', ev => { if (ev.target === overlay) overlay.remove(); });
 
-    renderAppearance(body);
-    renderThemeEditor(body);
-    renderTerminal(body);
-    renderAI(body);
-    renderCustomCSS(body);
+    const show = (sec: SettingsSection) => {
+        nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.sec === sec.id));
+        pane.innerHTML = '';
+        sec.render(pane);
+    };
+    for (const sec of SECTIONS) {
+        const b = document.createElement('button');
+        b.textContent = sec.label;
+        b.dataset.sec = sec.id;
+        b.onclick = () => show(sec);
+        nav.appendChild(b);
+    }
+    show(SECTIONS[0]);
 }
 
-function section(title: string): HTMLElement {
+function group(): HTMLElement {
     const s = document.createElement('div');
-    s.className = 'set-section';
-    const h = document.createElement('h3');
-    h.textContent = title;
-    s.appendChild(h);
+    s.className = 'set-group';
     return s;
+}
+
+function subTitle(text: string): HTMLElement {
+    const h = document.createElement('div');
+    h.className = 'set-sub';
+    h.textContent = text;
+    return h;
 }
 
 function row(label: string, sub: string, control: HTMLElement): HTMLElement {
@@ -129,9 +164,9 @@ function toggle(on: boolean, onchange: (v: boolean) => void): HTMLElement {
     return t;
 }
 
-function renderAppearance(body: HTMLElement) {
+function renderAppearance(pane: HTMLElement) {
     const s = settingsOrDefault();
-    const sec = section('Appearance');
+    const g = group();
 
     const themes = document.createElement('div');
     themes.className = 'theme-grid';
@@ -177,7 +212,7 @@ function renderAppearance(body: HTMLElement) {
         };
         themes.appendChild(card);
     }
-    sec.appendChild(themes);
+    g.appendChild(themes);
 
     const scale = document.createElement('input');
     scale.type = 'range';
@@ -186,7 +221,7 @@ function renderAppearance(body: HTMLElement) {
     scale.step = '0.05';
     scale.value = String(s.uiScale || 1);
     scale.oninput = () => update({ uiScale: parseFloat(scale.value) });
-    sec.appendChild(row('Interface scale', 'Scales the whole UI', scale));
+    g.appendChild(row('Interface scale', 'Scales the whole UI', scale));
 
     const sideSeg = document.createElement('div');
     sideSeg.className = 'seg';
@@ -201,17 +236,17 @@ function renderAppearance(body: HTMLElement) {
         };
         sideSeg.appendChild(b);
     }
-    sec.appendChild(row('Agent panel side', '', sideSeg));
+    g.appendChild(row('Agent panel side', '', sideSeg));
 
-    sec.appendChild(row('Sidebar', 'Show the host list', toggle(s.sidebarVisible, v => update({ sidebarVisible: v }))));
-    sec.appendChild(row('Agent panel', 'Show the AI assistant', toggle(s.agentVisible, v => update({ agentVisible: v }))));
+    g.appendChild(row('Sidebar', 'Show the host list', toggle(s.sidebarVisible, v => update({ sidebarVisible: v }))));
+    g.appendChild(row('Agent panel', 'Show the AI assistant', toggle(s.agentVisible, v => update({ agentVisible: v }))));
 
-    body.appendChild(sec);
+    pane.appendChild(g);
 }
 
-function renderThemeEditor(body: HTMLElement) {
+function renderThemes(pane: HTMLElement) {
     const s = settingsOrDefault();
-    const sec = section('Theme editor');
+    const g = group();
 
     const top = document.createElement('div');
     top.className = 'set-row';
@@ -242,132 +277,130 @@ function renderThemeEditor(body: HTMLElement) {
             ui: { ...src.ui },
             terminal: { ...(src.terminal as Record<string, string>) } as ITheme,
         };
-        s.customThemes = [...(s.customThemes ?? []), copy as unknown as main.Theme];
-        update({ customThemes: s.customThemes });
+        const cur2 = settingsOrDefault();
+        cur2.customThemes = [...(cur2.customThemes ?? []), copy as unknown as main.Theme];
+        update({ customThemes: cur2.customThemes });
+        const opt = document.createElement('option');
+        opt.value = copy.id;
+        opt.textContent = copy.name;
+        sel.appendChild(opt);
         sel.value = copy.id;
         renderThemeVars();
     };
     top.appendChild(dupBtn);
-
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn danger';
-    delBtn.style.marginLeft = '8px';
-    delBtn.textContent = 'Delete custom';
-    delBtn.onclick = () => {
-        const t = customThemes().find(t => t.id === sel.value);
-        if (!t) return;
-        if (!confirm(`Delete theme "${t.name}"?`)) return;
-        s.customThemes = (s.customThemes ?? []).filter((x: any) => x.id !== t.id);
-        if (s.themeId === t.id) update({ themeId: 'black', customThemes: s.customThemes });
-        else update({ customThemes: s.customThemes });
-        renderThemeVars();
-    };
-    top.appendChild(delBtn);
-    sec.appendChild(top);
+    g.appendChild(top);
 
     const nameRow = document.createElement('div');
     nameRow.className = 'set-row';
+    nameRow.style.display = 'none';
     const nameI = document.createElement('input');
     nameI.style.width = '220px';
     const cur = () => customThemes().find(t => t.id === sel.value);
-    nameI.value = cur()?.name ?? '';
-    nameI.disabled = !cur();
     nameI.onchange = () => {
         const t = cur();
         if (t) {
             t.name = nameI.value;
-            update({ customThemes: s.customThemes });
+            persist();
         }
     };
     const nameL = document.createElement('label');
     nameL.textContent = 'Custom theme name';
     nameRow.append(nameL, nameI);
-    sec.appendChild(nameRow);
+    g.appendChild(nameRow);
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn danger';
+    delBtn.style.margin = '4px 0 12px';
+    delBtn.style.display = 'none';
+    delBtn.textContent = 'Delete custom theme';
+    delBtn.onclick = () => {
+        const t = cur();
+        if (!t) return;
+        if (!confirm(`Delete theme "${t.name}"?`)) return;
+        const wasSelected = sel.value === t.id;
+        const cur2 = settingsOrDefault();
+        cur2.customThemes = (cur2.customThemes ?? []).filter((x: any) => x.id !== t.id);
+        sel.querySelector(`option[value="${t.id}"]`)?.remove();
+        if (cur2.themeId === t.id) update({ themeId: 'black', customThemes: cur2.customThemes });
+        else update({ customThemes: cur2.customThemes });
+        if (wasSelected) sel.value = settingsOrDefault().themeId;
+        renderThemeVars();
+    };
+    g.appendChild(delBtn);
 
     const varsBox = document.createElement('div');
-    varsBox.className = 'var-grid';
-    sec.appendChild(varsBox);
+    g.appendChild(varsBox);
+
+    function colorItem(labelText: string, get: () => string, set: (v: string) => void, onLive: () => void) {
+        const item = document.createElement('div');
+        item.className = 'var-item';
+        const l = document.createElement('label');
+        l.textContent = labelText;
+        const inp = document.createElement('input');
+        inp.type = 'color';
+        inp.value = normalizeColor(get());
+        inp.oninput = () => {
+            set(inp.value);
+            onLive();
+            persist();
+        };
+        const hex = document.createElement('input');
+        hex.type = 'text';
+        hex.value = get();
+        hex.spellcheck = false;
+        hex.onchange = () => {
+            if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) {
+                set(hex.value);
+                inp.value = hex.value;
+                onLive();
+                persist();
+            }
+        };
+        l.append(inp);
+        item.append(l, hex);
+        return item;
+    }
 
     function renderThemeVars() {
         varsBox.innerHTML = '';
         const t = cur();
-        if (!t) {
+        const isCustom = !!t && !t.builtin;
+        nameRow.style.display = isCustom ? '' : 'none';
+        delBtn.style.display = isCustom ? '' : 'none';
+        if (!t || t.builtin) {
             const note = document.createElement('div');
             note.className = 'muted';
             note.style.fontSize = '12px';
             note.textContent = 'Built-in themes are read-only. Duplicate one to customize it.';
             varsBox.appendChild(note);
-            nameI.disabled = true;
             return;
         }
-        nameI.disabled = false;
         nameI.value = t.name;
+        const themeId = t.id;
+        const liveTheme = () => customThemes().find(x => x.id === themeId) as ThemeDef | undefined;
 
-        const uiSub = document.createElement('div');
-        uiSub.className = 'set-section';
-        const uh = document.createElement('h3');
-        uh.textContent = 'Interface colors';
-        uiSub.appendChild(uh);
+        const uiSub = group();
+        uiSub.appendChild(subTitle('Interface colors'));
+        const uiGrid = document.createElement('div');
+        uiGrid.className = 'var-grid';
         for (const v of UI_VARS) {
-            const item = document.createElement('div');
-            item.className = 'var-item';
-            const l = document.createElement('label');
-            const inp = document.createElement('input');
-            inp.type = 'color';
-            const curVal = t.ui[v] || '#000000';
-            inp.value = normalizeColor(curVal);
-            inp.oninput = () => {
-                t.ui[v] = inp.value;
-                applyTheme(resolveTheme(themeSettings()));
-                persist();
-            };
-            const hex = document.createElement('input');
-            hex.type = 'text';
-            hex.value = curVal;
-            hex.onchange = () => {
-                if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) {
-                    t.ui[v] = hex.value;
-                    inp.value = hex.value;
-                    applyTheme(resolveTheme(themeSettings()));
-                    persist();
-                }
-            };
-            l.append(inp);
-            const span = document.createElement('span');
-            span.className = 'mono';
-            span.textContent = v;
-            l.appendChild(span);
-            item.append(l, hex);
-            uiSub.appendChild(item);
+            uiGrid.appendChild(colorItem(v,
+                () => liveTheme()?.ui[v] || '#000000',
+                nv => { const tt = liveTheme(); if (tt) tt.ui[v] = nv; },
+                () => applyTheme(resolveTheme(themeSettings()))));
         }
+        uiSub.appendChild(uiGrid);
         varsBox.appendChild(uiSub);
 
-        const termSub = document.createElement('div');
-        termSub.className = 'set-section';
-        const th = document.createElement('h3');
-        th.textContent = 'Terminal colors';
-        termSub.appendChild(th);
+        const termSub = group();
+        termSub.appendChild(subTitle('Terminal colors'));
         const tgrid = document.createElement('div');
         tgrid.className = 'var-grid';
         for (const { key, label } of TERM_COLOR_KEYS) {
-            const item = document.createElement('div');
-            item.className = 'var-item';
-            const val = (t.terminal as Record<string, string>)[key as string] || '#000000';
-            const l = document.createElement('label');
-            const inp = document.createElement('input');
-            inp.type = 'color';
-            inp.value = normalizeColor(val);
-            inp.oninput = () => {
-                (t.terminal as Record<string, string>)[key as string] = inp.value;
-                applyAll();
-                persist();
-            };
-            l.append(inp);
-            const span = document.createElement('span');
-            span.textContent = label;
-            l.appendChild(span);
-            item.appendChild(l);
-            tgrid.appendChild(item);
+            tgrid.appendChild(colorItem(label,
+                () => (liveTheme()?.terminal as Record<string, string> | undefined)?.[key as string] || '#000000',
+                nv => { const tt = liveTheme(); if (tt) (tt.terminal as Record<string, string>)[key as string] = nv; },
+                () => applyAll()));
         }
         termSub.appendChild(tgrid);
         varsBox.appendChild(termSub);
@@ -375,11 +408,10 @@ function renderThemeEditor(body: HTMLElement) {
 
     sel.onchange = () => {
         nameI.value = cur()?.name ?? '';
-        nameI.disabled = !cur();
         renderThemeVars();
     };
     renderThemeVars();
-    body.appendChild(sec);
+    pane.appendChild(g);
 }
 
 function normalizeColor(c: string): string {
@@ -390,16 +422,16 @@ function normalizeColor(c: string): string {
     return '#000000';
 }
 
-function renderTerminal(body: HTMLElement) {
+function renderTerminal(pane: HTMLElement) {
     const s = settingsOrDefault();
-    const sec = section('Terminal');
+    const g = group();
 
     const fontI = document.createElement('input');
     fontI.value = s.fontFamily;
     fontI.style.width = '280px';
     fontI.className = 'mono';
     fontI.onchange = () => update({ fontFamily: fontI.value });
-    sec.appendChild(row('Font family', '', fontI));
+    g.appendChild(row('Font family', '', fontI));
 
     const sizeI = document.createElement('input');
     sizeI.type = 'number';
@@ -407,7 +439,7 @@ function renderTerminal(body: HTMLElement) {
     sizeI.max = '32';
     sizeI.value = String(s.fontSize);
     sizeI.onchange = () => update({ fontSize: parseInt(sizeI.value, 10) || 14 });
-    sec.appendChild(row('Font size', 'Pixels', sizeI));
+    g.appendChild(row('Font size', 'Pixels', sizeI));
 
     const lhI = document.createElement('input');
     lhI.type = 'number';
@@ -416,7 +448,7 @@ function renderTerminal(body: HTMLElement) {
     lhI.step = '0.05';
     lhI.value = String(s.lineHeight);
     lhI.onchange = () => update({ lineHeight: parseFloat(lhI.value) || 1.2 });
-    sec.appendChild(row('Line height', '', lhI));
+    g.appendChild(row('Line height', '', lhI));
 
     const cursorSel = document.createElement('select');
     cursorSel.style.width = '140px';
@@ -428,9 +460,9 @@ function renderTerminal(body: HTMLElement) {
     }
     cursorSel.value = s.cursorStyle || 'bar';
     cursorSel.onchange = () => update({ cursorStyle: cursorSel.value });
-    sec.appendChild(row('Cursor style', '', cursorSel));
+    g.appendChild(row('Cursor style', '', cursorSel));
 
-    sec.appendChild(row('Cursor blink', '', toggle(s.cursorBlink, v => update({ cursorBlink: v }))));
+    g.appendChild(row('Cursor blink', '', toggle(s.cursorBlink, v => update({ cursorBlink: v }))));
 
     const scrollI = document.createElement('input');
     scrollI.type = 'number';
@@ -439,94 +471,94 @@ function renderTerminal(body: HTMLElement) {
     scrollI.step = '1000';
     scrollI.value = String(s.scrollback);
     scrollI.onchange = () => update({ scrollback: parseInt(scrollI.value, 10) || 10000 });
-    sec.appendChild(row('Scrollback', 'Lines kept in history', scrollI));
+    g.appendChild(row('Scrollback', 'Lines kept in history', scrollI));
 
-    sec.appendChild(row('Copy on select', '', toggle(s.copyOnSelect, v => update({ copyOnSelect: v }))));
-    sec.appendChild(row('Right-click paste', '', toggle(s.rightClickPaste, v => update({ rightClickPaste: v }))));
+    g.appendChild(row('Copy on select', '', toggle(s.copyOnSelect, v => update({ copyOnSelect: v }))));
+    g.appendChild(row('Right-click paste', '', toggle(s.rightClickPaste, v => update({ rightClickPaste: v }))));
 
-    body.appendChild(sec);
+    pane.appendChild(g);
 }
 
-function renderAI(body: HTMLElement) {
+function renderAgentSection(pane: HTMLElement) {
     const s = settingsOrDefault();
-    const ai = s.ai;
-    const sec = section('AI agent');
+    const ai = () => settingsOrDefault().ai;
+    const g = group();
 
     const urlI = document.createElement('input');
-    urlI.value = ai.baseUrl;
+    urlI.value = s.ai.baseUrl;
     urlI.className = 'mono';
     urlI.style.width = '100%';
-    urlI.onchange = () => { ai.baseUrl = urlI.value; persistAI(); };
+    urlI.onchange = () => { ai().baseUrl = urlI.value; persistAI(); };
     const urlF = document.createElement('div');
     urlF.className = 'field full';
     const urlL = document.createElement('label');
     urlL.textContent = 'Base URL';
     urlF.append(urlL, urlI);
-    sec.appendChild(urlF);
+    g.appendChild(urlF);
 
     const keyI = document.createElement('input');
     keyI.type = 'password';
-    keyI.value = ai.apiKey;
+    keyI.value = s.ai.apiKey;
     keyI.className = 'mono';
     keyI.style.width = '100%';
     keyI.placeholder = 'sk-… (empty for local servers like Ollama)';
-    keyI.onchange = () => { ai.apiKey = keyI.value; persistAI(); };
+    keyI.onchange = () => { ai().apiKey = keyI.value; persistAI(); };
     const keyF = document.createElement('div');
     keyF.className = 'field full';
     const keyL = document.createElement('label');
     keyL.textContent = 'API key';
     keyF.append(keyL, keyI);
-    sec.appendChild(keyF);
+    g.appendChild(keyF);
 
     const modelI = document.createElement('input');
-    modelI.value = ai.model;
+    modelI.value = s.ai.model;
     modelI.className = 'mono';
     modelI.style.width = '100%';
-    modelI.onchange = () => { ai.model = modelI.value; persistAI(); notify(); };
+    modelI.onchange = () => { ai().model = modelI.value; persistAI(); notify(); };
     const modelF = document.createElement('div');
     modelF.className = 'field';
     const modelL = document.createElement('label');
     modelL.textContent = 'Model';
     modelF.append(modelL, modelI);
-    sec.appendChild(modelF);
+    g.appendChild(modelF);
 
     const stepsI = document.createElement('input');
     stepsI.type = 'number';
     stepsI.min = '1';
     stepsI.max = '100';
-    stepsI.value = String(ai.maxSteps || 30);
-    stepsI.onchange = () => { ai.maxSteps = parseInt(stepsI.value, 10) || 30; persistAI(); };
+    stepsI.value = String(s.ai.maxSteps || 30);
+    stepsI.onchange = () => { ai().maxSteps = parseInt(stepsI.value, 10) || 30; persistAI(); };
     const stepsF = document.createElement('div');
     stepsF.className = 'field';
     const stepsL = document.createElement('label');
     stepsL.textContent = 'Max steps';
     stepsF.append(stepsL, stepsI);
-    sec.appendChild(stepsF);
+    g.appendChild(stepsF);
 
-    sec.appendChild(row('Approve commands', 'Ask before the agent runs commands or changes hosts', toggle(ai.approveCommands, v => { ai.approveCommands = v; persistAI(); })));
+    g.appendChild(row('Approve commands', 'Ask before the agent runs commands or changes hosts', toggle(s.ai.approveCommands, v => { ai().approveCommands = v; persistAI(); })));
 
     const instI = document.createElement('textarea');
-    instI.value = ai.instructions;
+    instI.value = s.ai.instructions;
     instI.placeholder = 'Extra instructions appended to the agent system prompt';
     instI.style.width = '100%';
-    instI.onchange = () => { ai.instructions = instI.value; persistAI(); };
+    instI.onchange = () => { ai().instructions = instI.value; persistAI(); };
     const instF = document.createElement('div');
     instF.className = 'field full';
     const instL = document.createElement('label');
     instL.textContent = 'Instructions';
     instF.append(instL, instI);
-    sec.appendChild(instF);
+    g.appendChild(instF);
 
-    body.appendChild(sec);
+    pane.appendChild(g);
 }
 
 function persistAI() {
     persist();
 }
 
-function renderCustomCSS(body: HTMLElement) {
+function renderCustomCSS(pane: HTMLElement) {
     const s = settingsOrDefault();
-    const sec = section('Custom CSS');
+    const g = group();
     const ta = document.createElement('textarea');
     ta.value = s.customCss;
     ta.placeholder = '.term-frame { border-color: red; }';
@@ -540,8 +572,8 @@ function renderCustomCSS(body: HTMLElement) {
     const l = document.createElement('label');
     l.textContent = 'Injected into the page as a <style> tag';
     f.append(l, ta);
-    sec.appendChild(f);
-    body.appendChild(sec);
+    g.appendChild(f);
+    pane.appendChild(g);
 }
 
 export function toggleSettings() {

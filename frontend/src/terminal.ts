@@ -8,6 +8,8 @@ import { state, settingsOrDefault, themeSettings, applyTermOptions, connectHost,
 import { currentXtermTheme } from './themes';
 import { icon } from './icons';
 import { toastError } from './toast';
+import { openHostEditor } from './host-editor';
+import { importSSHConfig } from './sidebar';
 
 onTabClosed(tab => {
     tab.term?.dispose();
@@ -169,34 +171,52 @@ function renderEmpty() {
     wrap.appendChild(input);
     el.appendChild(wrap);
 
+    if (state.hosts.length === 0) {
+        const hint = document.createElement('div');
+        hint.className = 'empty-hint';
+        hint.textContent = 'Press Enter to connect. Keys from ~/.ssh and the ssh agent are tried automatically.';
+        el.appendChild(hint);
+        const btns = document.createElement('div');
+        btns.className = 'empty-actions';
+        const newBtn = document.createElement('button');
+        newBtn.className = 'btn primary';
+        newBtn.textContent = 'New host';
+        newBtn.onclick = () => openHostEditor(null);
+        const importBtn = document.createElement('button');
+        importBtn.className = 'btn';
+        importBtn.textContent = 'Import ssh config';
+        importBtn.onclick = () => { void importSSHConfig(); };
+        btns.append(newBtn, importBtn);
+        el.appendChild(btns);
+        return;
+    }
+
     const title = document.createElement('div');
     title.className = 'empty-title';
     title.textContent = 'or connect to a host';
     el.appendChild(title);
 
-    if (state.hosts.length > 0) {
-        const grid = document.createElement('div');
-        grid.className = 'empty-hosts';
-        for (const h of state.hosts.slice(0, 12)) {
-            const card = document.createElement('button');
-            card.className = 'empty-host';
-            const dot = document.createElement('span');
-            dot.className = 'dot';
-            if (h.color) dot.style.background = h.color;
-            const txt = document.createElement('span');
-            txt.style.flex = '1';
-            txt.style.textAlign = 'left';
-            const name = document.createElement('div');
-            name.className = 'eh-name';
-            name.textContent = h.name || h.user + '@' + h.address;
-            const sub = document.createElement('div');
-            sub.className = 'eh-sub';
-            sub.textContent = h.user + '@' + h.address + (h.port && h.port !== 22 ? ':' + h.port : '');
-            txt.append(name, sub);
-            card.append(dot, txt);
-            card.onclick = () => { void connectHost(h); };
-            grid.appendChild(card);
-        }
-        el.appendChild(grid);
+    const grid = document.createElement('div');
+    grid.className = 'empty-hosts';
+    for (const h of state.hosts.slice(0, 12)) {
+        const card = document.createElement('button');
+        card.className = 'empty-host';
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        if (h.color) dot.style.background = h.color;
+        const txt = document.createElement('span');
+        txt.style.flex = '1';
+        txt.style.textAlign = 'left';
+        const name = document.createElement('div');
+        name.className = 'eh-name';
+        name.textContent = h.name || h.user + '@' + h.address;
+        const sub = document.createElement('div');
+        sub.className = 'eh-sub';
+        sub.textContent = h.user + '@' + h.address + (h.port && h.port !== 22 ? ':' + h.port : '');
+        txt.append(name, sub);
+        card.append(dot, txt);
+        card.onclick = () => { void connectHost(h); };
+        grid.appendChild(card);
     }
+    el.appendChild(grid);
 }

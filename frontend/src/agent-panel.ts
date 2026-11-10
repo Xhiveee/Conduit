@@ -65,10 +65,12 @@ export function renderAgent() {
     const tid = agentTargetId();
     const targetTab = state.tabs.find(t => t.sessionId === tid);
     target.innerHTML = '';
-    target.append(document.createTextNode('Target session: '));
-    const b = document.createElement('b');
-    b.textContent = targetTab ? targetTab.title : 'none — messages still work, the agent can connect itself';
-    target.appendChild(b);
+    const tlabel = document.createElement('span');
+    tlabel.className = 'ag-target-label';
+    tlabel.textContent = 'Target: ';
+    const tval = document.createElement('b');
+    tval.textContent = targetTab ? targetTab.title : 'none';
+    target.append(tlabel, tval);
     el.appendChild(target);
 
     const msgs = document.createElement('div');

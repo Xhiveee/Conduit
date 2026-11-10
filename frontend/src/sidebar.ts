@@ -32,7 +32,7 @@ export function renderSidebar() {
     importBtn.className = 'sb-btn';
     importBtn.title = 'Import from ~/.ssh/config';
     importBtn.append(icon('download', 14), document.createTextNode('Import'));
-    importBtn.onclick = () => { void doImport(); };
+    importBtn.onclick = () => { void importSSHConfig(); };
     actions.append(newBtn, importBtn);
     el.appendChild(actions);
 
@@ -130,14 +130,17 @@ function renderList() {
         for (const k of state.keys) {
             const row = document.createElement('div');
             row.className = 'key-row';
-            row.title = k.path;
-            const ic = icon(k.source === 'agent' ? 'server' : 'file-key', 13);
+            const isAgent = k.source === 'agent';
+            const base = k.path.split(/[\\/]/).pop() || k.path;
+            const label = isAgent ? 'agent: ' + (k.comment || k.type || 'key') : base;
+            row.title = [isAgent ? 'ssh-agent' : k.path, k.fingerprint, k.comment].filter(Boolean).join('\n');
+            const ic = icon(isAgent ? 'server' : 'file-key', 13);
             const nameEl = document.createElement('span');
             nameEl.className = 'kname';
-            nameEl.textContent = k.comment || k.type || 'key';
+            nameEl.textContent = label;
             const meta = document.createElement('span');
             meta.className = 'kmeta';
-            meta.textContent = (k.source === 'agent' ? 'agent · ' : '') + (k.encrypted ? 'encrypted · ' : '') + (k.fingerprint || '').slice(0, 20);
+            meta.textContent = [k.type, k.fingerprint ? k.fingerprint.slice(0, 24) + '…' : '', k.encrypted ? 'encrypted' : ''].filter(Boolean).join(' · ');
             row.append(ic, nameEl, meta);
             keySection.appendChild(row);
         }
@@ -218,7 +221,7 @@ async function deleteHost(h: (typeof state.hosts)[number]) {
     }
 }
 
-async function doImport() {
+export async function importSSHConfig() {
     try {
         const added = await App.ImportSSHConfig();
         await refreshHosts();
