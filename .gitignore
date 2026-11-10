@@ -1,0 +1,6 @@
+build/bin
+.tools
+data
+.clean
+node_modules
+frontend/dist
