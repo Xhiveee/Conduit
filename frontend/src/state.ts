@@ -99,6 +99,7 @@ export async function init() {
     state.hosts = hosts;
     state.keys = keys;
     state.sessions = sessions;
+    for (const s of sessions) upsertSessionTab(s);
     applyAll();
     wireEvents();
     notify();
