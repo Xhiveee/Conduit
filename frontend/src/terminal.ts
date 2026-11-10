@@ -1,0 +1,213 @@
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
+import '@xterm/xterm/css/xterm.css';
+import * as App from '../wailsjs/go/main/App';
+import { state, settingsOrDefault, themeSettings, applyTermOptions, connectHost, quickConnect, retryTab, onTabClosed, type Tab } from './state';
+import { currentXtermTheme } from './themes';
+import { icon } from './icons';
+
+onTabClosed(tab => {
+    tab.term?.dispose();
+    tab.term = null;
+    tab.fit = null;
+});
+
+const termsRoot = () => document.getElementById('terms')!;
+const emptyRoot = () => document.getElementById('empty')!;
+
+export function syncTerminals() {
+    const root = termsRoot();
+    for (const tab of state.tabs) {
+        if (!tab.termEl) {
+            createTermHost(tab);
+        }
+        tab.termEl!.classList.toggle('active', tab.key === state.activeKey);
+        tab.termEl!.querySelector('.term-frame')?.classList.toggle('agent-active', tab.agentActive);
+    }
+    for (const child of Array.from(root.children)) {
+        if (child.id === 'empty') continue;
+        const key = (child as HTMLElement).dataset.key;
+        if (key && !state.tabs.some(t => t.key === key)) {
+            child.remove();
+        }
+    }
+    emptyRoot().classList.toggle('hidden', state.tabs.length > 0);
+    renderEmpty();
+}
+
+function createTermHost(tab: Tab) {
+    const root = termsRoot();
+    const host = document.createElement('div');
+    host.className = 'term-host';
+    host.dataset.key = tab.key;
+    const frame = document.createElement('div');
+    frame.className = 'term-frame';
+    const inner = document.createElement('div');
+    inner.className = 'term-inner';
+    frame.appendChild(inner);
+    host.appendChild(frame);
+    root.insertBefore(host, emptyRoot());
+    tab.termEl = host;
+
+    if (tab.error) {
+        renderError(tab);
+        return;
+    }
+    if (!tab.sessionId) return;
+
+    const s = settingsOrDefault();
+    const term = new Terminal({
+        fontFamily: s.fontFamily,
+        fontSize: s.fontSize,
+        lineHeight: s.lineHeight,
+        cursorStyle: (s.cursorStyle || 'bar') as 'block' | 'underline' | 'bar',
+        cursorBlink: s.cursorBlink,
+        scrollback: s.scrollback,
+        theme: currentXtermTheme(themeSettings()),
+        allowProposedApi: true,
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.loadAddon(new WebLinksAddon());
+    term.loadAddon(new Unicode11Addon());
+    term.open(inner);
+    tab.term = term;
+    tab.fit = fit;
+    applyTermOptions(tab);
+
+    term.onData(data => {
+        if (tab.sessionId && tab.connected) {
+            App.Write(tab.sessionId, data).catch(() => {});
+        }
+    });
+    term.attachCustomKeyEventHandler(ev => handleTermKey(ev, term));
+    term.onSelectionChange(() => {
+        const st = settingsOrDefault();
+        if (st.copyOnSelect && term.hasSelection()) {
+            const sel = term.getSelection();
+            if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+        }
+    });
+    inner.addEventListener('contextmenu', ev => {
+        const st = settingsOrDefault();
+        if (!st.rightClickPaste) return;
+        ev.preventDefault();
+        navigator.clipboard.readText().then(t => { if (t) term.paste(t); }).catch(() => {});
+    });
+
+    const ro = new ResizeObserver(() => {
+        requestAnimationFrame(() => fitAndResize(tab));
+    });
+    ro.observe(inner);
+    if (tab.key === state.activeKey) {
+        requestAnimationFrame(() => fitAndResize(tab));
+    }
+}
+
+function fitAndResize(tab: Tab) {
+    if (!tab.fit || !tab.termEl?.classList.contains('active')) return;
+    try {
+        tab.fit.fit();
+    } catch {
+        return;
+    }
+    if (tab.sessionId && tab.connected) {
+        App.Resize(tab.sessionId, tab.term!.cols, tab.term!.rows).catch(() => {});
+    }
+}
+
+export function fitActive() {
+    const tab = state.tabs.find(t => t.key === state.activeKey);
+    if (tab) fitAndResize(tab);
+}
+
+function handleTermKey(ev: KeyboardEvent, term: Terminal): boolean {
+    if (ev.ctrlKey && ev.shiftKey && !ev.altKey) {
+        const k = ev.key.toLowerCase();
+        if (k === 'c') {
+            if (term.hasSelection()) {
+                navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+                return false;
+            }
+            return true;
+        }
+        if (k === 'v') {
+            navigator.clipboard.readText().then(t => { if (t) term.paste(t); }).catch(() => {});
+            return false;
+        }
+    }
+    return true;
+}
+
+function renderError(tab: Tab) {
+    const host = tab.termEl!;
+    const frame = host.querySelector('.term-frame')!;
+    frame.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'term-error';
+    const iconEl = icon('alert-triangle', 28);
+    iconEl.style.color = 'var(--danger)';
+    const msg = document.createElement('div');
+    msg.className = 'err-msg';
+    msg.textContent = tab.error;
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.textContent = 'Retry';
+    btn.onclick = () => { void retryTab(tab); };
+    box.append(iconEl, msg, btn);
+    frame.appendChild(box);
+}
+
+function renderEmpty() {
+    const el = emptyRoot();
+    el.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'empty-qc';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'user@host:port';
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    input.id = 'empty-quick-connect';
+    input.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter' && input.value.trim()) {
+            void quickConnect(input.value.trim());
+            input.value = '';
+        }
+    });
+    wrap.appendChild(input);
+    el.appendChild(wrap);
+
+    const title = document.createElement('div');
+    title.className = 'empty-title';
+    title.textContent = 'or connect to a host';
+    el.appendChild(title);
+
+    if (state.hosts.length > 0) {
+        const grid = document.createElement('div');
+        grid.className = 'empty-hosts';
+        for (const h of state.hosts.slice(0, 12)) {
+            const card = document.createElement('button');
+            card.className = 'empty-host';
+            const dot = document.createElement('span');
+            dot.className = 'dot';
+            if (h.color) dot.style.background = h.color;
+            const txt = document.createElement('span');
+            txt.style.flex = '1';
+            txt.style.textAlign = 'left';
+            const name = document.createElement('div');
+            name.className = 'eh-name';
+            name.textContent = h.name || h.user + '@' + h.address;
+            const sub = document.createElement('div');
+            sub.className = 'eh-sub';
+            sub.textContent = h.user + '@' + h.address + (h.port && h.port !== 22 ? ':' + h.port : '');
+            txt.append(name, sub);
+            card.append(dot, txt);
+            card.onclick = () => { void connectHost(h); };
+            grid.appendChild(card);
+        }
+        el.appendChild(grid);
+    }
+}
