@@ -2,6 +2,7 @@ import * as App from '../wailsjs/go/main/App';
 import { notify, applyAll, settingsOrDefault, customThemes, themeSettings } from './state';
 import { BUILTIN_THEMES, applyTheme, resolveTheme, type ThemeDef } from './themes';
 import { icon } from './icons';
+import { toastError } from './toast';
 import type { main } from '../wailsjs/go/models';
 import type { ITheme } from '@xterm/xterm';
 
@@ -41,7 +42,7 @@ function persist() {
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
         const s = settingsOrDefault();
-        void App.SaveSettings(s).catch(() => {});
+        void App.SaveSettings(s).catch(toastError);
     }, 400);
 }
 

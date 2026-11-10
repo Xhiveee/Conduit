@@ -2,6 +2,7 @@ import * as App from '../wailsjs/go/main/App';
 import type { main } from '../wailsjs/go/models';
 import { state, notify, refreshHosts } from './state';
 import { icon } from './icons';
+import { toastError } from './toast';
 
 const COLORS = ['', '#7fd18b', '#6ea8fe', '#c792ea', '#f0a35e', '#e06c60', '#56b6c2', '#d9a441'];
 
@@ -192,9 +193,18 @@ export function openHostEditor(host: main.Host | null) {
             alert('Address and user are required');
             return;
         }
-        await App.SaveHost(h);
+        try {
+            await App.SaveHost(h);
+        } catch (err) {
+            toastError(err);
+            return;
+        }
         overlay.remove();
-        await refreshHosts();
+        try {
+            await refreshHosts();
+        } catch (err) {
+            toastError(err);
+        }
         notify();
     }
 }

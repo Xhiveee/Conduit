@@ -2,6 +2,7 @@ import * as App from '../wailsjs/go/main/App';
 import { state, onUI, connectHost, activateTab, sessionOpenForHost, refreshHosts, type Tab } from './state';
 import { icon } from './icons';
 import { openHostEditor } from './host-editor';
+import { toastError } from './toast';
 
 const root = () => document.getElementById('sidebar')!;
 
@@ -199,14 +200,22 @@ function hostRow(h: (typeof state.hosts)[number]): HTMLElement {
 
 async function duplicateHost(h: (typeof state.hosts)[number]) {
     const copy = { ...h, id: '', name: (h.name || h.address) + ' copy' };
-    await App.SaveHost(copy);
-    await refreshHosts();
+    try {
+        await App.SaveHost(copy);
+        await refreshHosts();
+    } catch (err) {
+        toastError(err);
+    }
 }
 
 async function deleteHost(h: (typeof state.hosts)[number]) {
     if (!confirm(`Delete host "${h.name || h.address}"?`)) return;
-    await App.DeleteHost(h.id);
-    await refreshHosts();
+    try {
+        await App.DeleteHost(h.id);
+        await refreshHosts();
+    } catch (err) {
+        toastError(err);
+    }
 }
 
 async function doImport() {

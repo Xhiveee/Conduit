@@ -1065,3 +1065,31 @@ body.agent-left #center { order: 4; }
 }
 
 .xterm .xterm-viewport::-webkit-scrollbar { width: 10px; }
+
+#toasts {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 200;
+    pointer-events: none;
+}
+.toast {
+    max-width: 380px;
+    padding: 10px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--border-strong);
+    border-radius: var(--radius-card);
+    color: var(--text-2);
+    font-size: 12.5px;
+    line-height: 1.45;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 160ms ease, transform 160ms ease;
+    pointer-events: auto;
+}
+.toast.in { opacity: 1; transform: none; }
+.toast.error { border-left-color: var(--danger); color: var(--text); }

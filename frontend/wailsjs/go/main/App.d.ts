@@ -34,4 +34,6 @@ export function SaveHost(arg1:main.Host):Promise<main.Host>;
 
 export function SaveSettings(arg1:main.Settings):Promise<void>;
 
+export function ScreenReply(arg1:string,arg2:string):Promise<void>;
+
 export function Write(arg1:string,arg2:string):Promise<void>;

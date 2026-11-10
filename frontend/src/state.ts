@@ -4,6 +4,7 @@ import { EventsOn } from '../wailsjs/runtime/runtime';
 import * as App from '../wailsjs/go/main/App';
 import type { main } from '../wailsjs/go/models';
 import { applyTheme, currentXtermTheme, resolveTheme, type ThemeDef } from './themes';
+import { toastError } from './toast';
 
 export interface Tab {
     key: string;
@@ -173,8 +174,22 @@ function wireEvents() {
             const bytes = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
             tab.term.write(bytes);
-        } catch {
+        } catch (err) {
+            toastError(err);
         }
+    });
+    EventsOn('screen:request', (requestId: string, sessionId: string, lines: number) => {
+        const term = tabBySession(sessionId)?.term;
+        if (!term) return;
+        const buf = term.buffer.active;
+        const count = Math.max(1, lines || 60);
+        const out: string[] = [];
+        for (let y = Math.max(0, buf.length - count); y < buf.length; y++) {
+            const line = buf.getLine(y);
+            out.push(line ? line.translateToString(true) : '');
+        }
+        while (out.length > 0 && out[out.length - 1].trim() === '') out.pop();
+        App.ScreenReply(requestId, out.join('\n')).catch(toastError);
     });
     EventsOn('session:closed', (id: string, reason: string) => {
         const tab = tabBySession(id);
@@ -270,13 +285,9 @@ export function activateTab(key: string) {
 
 export function fitTab(tab: Tab) {
     if (!tab.fit || !tab.termEl || !tab.termEl.classList.contains('active')) return;
-    try {
-        tab.fit.fit();
-    } catch {
-        return;
-    }
+    tab.fit.fit();
     if (tab.sessionId && tab.connected) {
-        App.Resize(tab.sessionId, tab.term!.cols, tab.term!.rows).catch(() => {});
+        App.Resize(tab.sessionId, tab.term!.cols, tab.term!.rows).catch(toastError);
     }
 }
 
@@ -352,7 +363,7 @@ export function closeTab(key: string) {
     const tab = state.tabs[idx];
     state.tabs.splice(idx, 1);
     tabCleanups.forEach(fn => fn(tab));
-    if (tab.sessionId) App.Disconnect(tab.sessionId).catch(() => {});
+    if (tab.sessionId) App.Disconnect(tab.sessionId).catch(toastError);
     if (state.activeKey === key) {
         const next = state.tabs[Math.min(idx, state.tabs.length - 1)];
         state.activeKey = next ? next.key : '';

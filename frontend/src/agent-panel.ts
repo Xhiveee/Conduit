@@ -1,6 +1,7 @@
 import * as App from '../wailsjs/go/main/App';
 import { state, onUI, notify, agentTargetId, settingsOrDefault, type AgentMsg, type ToolCard } from './state';
 import { icon } from './icons';
+import { toastError } from './toast';
 
 const root = () => document.getElementById('agent')!;
 let inputEl: HTMLTextAreaElement | null = null;
@@ -97,6 +98,7 @@ export function renderAgent() {
     ta.addEventListener('keydown', ev => {
         if (ev.key === 'Enter' && !ev.shiftKey) {
             ev.preventDefault();
+            if (state.agentBusy) return;
             sendAgentMessage(ta.value);
         }
     });
@@ -107,9 +109,15 @@ export function renderAgent() {
     hint.textContent = state.agentBusy ? 'Agent is working…' : 'Enter to send, Shift+Enter for newline';
     const send = document.createElement('button');
     send.className = 'ag-send';
-    send.title = 'Send';
-    send.appendChild(icon('send', 15));
-    send.onclick = () => sendAgentMessage(ta.value);
+    if (state.agentBusy) {
+        send.title = 'Stop agent';
+        send.appendChild(icon('square', 14));
+        send.onclick = () => { App.AgentStop().catch(toastError); };
+    } else {
+        send.title = 'Send';
+        send.appendChild(icon('send', 15));
+        send.onclick = () => sendAgentMessage(ta.value);
+    }
     row.append(hint, send);
     inputWrap.append(ta, row);
     el.appendChild(inputWrap);
@@ -131,7 +139,13 @@ function sendAgentMessage(text: string) {
         inputEl.value = '';
         inputEl.style.height = 'auto';
     }
-    void App.AgentSend(t, agentTargetId());
+    App.AgentSend(t, agentTargetId()).catch(err => {
+        toastError(err);
+        if (inputEl && inputEl.value === '') {
+            inputEl.value = t;
+            inputEl.dispatchEvent(new Event('input'));
+        }
+    });
 }
 
 export function focusAgentInput() {

@@ -66,6 +66,10 @@ export function SaveSettings(arg1) {
   return window['go']['main']['App']['SaveSettings'](arg1);
 }
 
+export function ScreenReply(arg1, arg2) {
+  return window['go']['main']['App']['ScreenReply'](arg1, arg2);
+}
+
 export function Write(arg1, arg2) {
   return window['go']['main']['App']['Write'](arg1, arg2);
 }

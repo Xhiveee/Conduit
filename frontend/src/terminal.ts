@@ -4,9 +4,10 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import * as App from '../wailsjs/go/main/App';
-import { state, settingsOrDefault, themeSettings, applyTermOptions, connectHost, quickConnect, retryTab, onTabClosed, type Tab } from './state';
+import { state, settingsOrDefault, themeSettings, applyTermOptions, connectHost, quickConnect, retryTab, onTabClosed, fitTab, activeTab, type Tab } from './state';
 import { currentXtermTheme } from './themes';
 import { icon } from './icons';
+import { toastError } from './toast';
 
 onTabClosed(tab => {
     tab.term?.dispose();
@@ -79,7 +80,7 @@ function createTermHost(tab: Tab) {
 
     term.onData(data => {
         if (tab.sessionId && tab.connected) {
-            App.Write(tab.sessionId, data).catch(() => {});
+            App.Write(tab.sessionId, data).catch(toastError);
         }
     });
     term.attachCustomKeyEventHandler(ev => handleTermKey(ev, term));
@@ -87,40 +88,28 @@ function createTermHost(tab: Tab) {
         const st = settingsOrDefault();
         if (st.copyOnSelect && term.hasSelection()) {
             const sel = term.getSelection();
-            if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+            if (sel) navigator.clipboard.writeText(sel).catch(toastError);
         }
     });
     inner.addEventListener('contextmenu', ev => {
         const st = settingsOrDefault();
         if (!st.rightClickPaste) return;
         ev.preventDefault();
-        navigator.clipboard.readText().then(t => { if (t) term.paste(t); }).catch(() => {});
+        navigator.clipboard.readText().then(t => { if (t) term.paste(t); }).catch(toastError);
     });
 
     const ro = new ResizeObserver(() => {
-        requestAnimationFrame(() => fitAndResize(tab));
+        requestAnimationFrame(() => fitTab(tab));
     });
     ro.observe(inner);
     if (tab.key === state.activeKey) {
-        requestAnimationFrame(() => fitAndResize(tab));
-    }
-}
-
-function fitAndResize(tab: Tab) {
-    if (!tab.fit || !tab.termEl?.classList.contains('active')) return;
-    try {
-        tab.fit.fit();
-    } catch {
-        return;
-    }
-    if (tab.sessionId && tab.connected) {
-        App.Resize(tab.sessionId, tab.term!.cols, tab.term!.rows).catch(() => {});
+        requestAnimationFrame(() => fitTab(tab));
     }
 }
 
 export function fitActive() {
-    const tab = state.tabs.find(t => t.key === state.activeKey);
-    if (tab) fitAndResize(tab);
+    const tab = activeTab();
+    if (tab) fitTab(tab);
 }
 
 function handleTermKey(ev: KeyboardEvent, term: Terminal): boolean {
@@ -128,13 +117,13 @@ function handleTermKey(ev: KeyboardEvent, term: Terminal): boolean {
         const k = ev.key.toLowerCase();
         if (k === 'c') {
             if (term.hasSelection()) {
-                navigator.clipboard.writeText(term.getSelection()).catch(() => {});
+                navigator.clipboard.writeText(term.getSelection()).catch(toastError);
                 return false;
             }
             return true;
         }
         if (k === 'v') {
-            navigator.clipboard.readText().then(t => { if (t) term.paste(t); }).catch(() => {});
+            navigator.clipboard.readText().then(t => { if (t) term.paste(t); }).catch(toastError);
             return false;
         }
     }
