@@ -69,14 +69,6 @@ export function openSettings(initialSection?: string) {
     layout.append(nav, pane);
     body.appendChild(layout);
 
-    const foot = document.createElement('div');
-    foot.className = 'modal-foot';
-    const close = document.createElement('button');
-    close.className = 'btn';
-    close.textContent = 'Close';
-    foot.appendChild(close);
-    modal.appendChild(foot);
-
     const closeDialog = openDialog(modal);
     settingsClose = () => {
         settingsClose = null;
@@ -84,7 +76,6 @@ export function openSettings(initialSection?: string) {
         closeDialog();
     };
     closeBtn.onclick = () => settingsClose?.();
-    close.onclick = () => settingsClose?.();
 
     const show = (sec: SettingsSection) => {
         nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.sec === sec.id));
