@@ -277,7 +277,9 @@ body.agent-left #center { order: 4; }
 
 .sb-search {
     position: relative;
-    padding: 0.625rem 0.625rem 0.375rem;
+    display: flex;
+    align-items: center;
+    padding: 0.625rem;
 }
 .sb-search input {
     width: 100%;
@@ -290,7 +292,8 @@ body.agent-left #center { order: 4; }
 .sb-search svg {
     position: absolute;
     left: 1.125rem;
-    top: 1.0625rem;
+    top: 50%;
+    transform: translateY(-50%);
     width: 0.875rem;
     height: 0.875rem;
     color: var(--text-3);
