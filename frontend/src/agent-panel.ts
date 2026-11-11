@@ -207,7 +207,7 @@ function buildChrome(el: HTMLElement) {
     const inputWrap = document.createElement('div');
     inputWrap.className = 'ag-input';
     const ta = document.createElement('textarea');
-    ta.placeholder = 'Message the agent…';
+    ta.placeholder = 'Message the agent';
     ta.rows = 1;
     ta.spellcheck = false;
     inputEl = ta;
@@ -252,7 +252,7 @@ function updateChrome() {
         chipEl.innerHTML = '';
         if (sum?.hostId) {
             const h = state.hosts.find(x => x.id === sum.hostId);
-            chipEl.appendChild(icon('server', 11));
+            chipEl.appendChild(icon('server', 12));
             const sp = document.createElement('span');
             sp.textContent = h ? (h.name || h.user + '@' + h.address) : 'host';
             chipEl.appendChild(sp);
@@ -263,7 +263,7 @@ function updateChrome() {
             attachMenu({ clientX: r.left, clientY: r.bottom + 4 }, sum.hostId);
         };
         } else {
-            chipEl.appendChild(icon('plus', 11));
+            chipEl.appendChild(icon('plus', 12));
             const sp = document.createElement('span');
             sp.textContent = 'Attach to server';
             chipEl.appendChild(sp);
@@ -499,7 +499,7 @@ function moveGroupMenu(chatId: string) {
     }));
     items.push(
         { sep: true },
-        { label: 'New group…', icon: 'plus', onSelect: () => void newGroup(chatId) },
+        { label: 'New group', icon: 'plus', onSelect: () => void newGroup(chatId) },
         { label: 'No group', icon: 'x', onSelect: () => void App.SetChatGroup(chatId, '').catch(toastError) },
     );
     const r = root().getBoundingClientRect();
@@ -756,6 +756,15 @@ function toolEl(t: ToolCard): HTMLElement {
         t.open = !t.open;
         card.classList.toggle('open', t.open);
         notify();
+    };
+    head.tabIndex = 0;
+    head.onkeydown = ev => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            t.open = !t.open;
+            card.classList.toggle('open', t.open);
+            notify();
+        }
     };
     card.appendChild(head);
 
@@ -1022,6 +1031,13 @@ function chatRow(c: main.ChatSummary, hostName: (id: string) => string): HTMLEle
         row.appendChild(spin);
     }
     row.onclick = () => { void selectChat(c.id); };
+    row.tabIndex = 0;
+    row.onkeydown = ev => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            void selectChat(c.id);
+        }
+    };
     row.oncontextmenu = ev => {
         const items: MenuEntry[] = [
             { label: 'Open', icon: 'message-square', onSelect: () => { void selectChat(c.id); } },

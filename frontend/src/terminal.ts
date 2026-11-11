@@ -88,7 +88,7 @@ function renderConnecting(tab: Tab) {
     name.textContent = tab.title;
     const sub = document.createElement('div');
     sub.className = 'tc-sub';
-    sub.appendChild(icon('loader', 13));
+    sub.appendChild(icon('loader', 14));
     const sp = document.createElement('span');
     sp.textContent = 'Connecting…';
     sub.appendChild(sp);
@@ -210,8 +210,8 @@ function searchDecoOptions() {
     const cs = getComputedStyle(document.documentElement);
     const rawA = cs.getPropertyValue('--accent').trim();
     const rawB = cs.getPropertyValue('--bg').trim();
-    const accent = /^#[0-9a-f]{6,8}$/i.test(rawA) ? rawA : '#86c294';
-    const bg = /^#[0-9a-f]{6,8}$/i.test(rawB) ? rawB : '#0f1012';
+    const accent = /^#[0-9a-f]{6,8}$/i.test(rawA) ? rawA : '#82aaff';
+    const bg = /^#[0-9a-f]{6,8}$/i.test(rawB) ? rawB : '#0b0d12';
     return {
         decorations: {
             matchBackground: mixHex(accent, bg, 0.28),
@@ -257,12 +257,12 @@ export function toggleSearch() {
         }
         const opts = searchDecoOptions();
         const found = prev ? tab.search!.findPrevious(q, opts) : tab.search!.findNext(q, opts);
-        if (!found) count.textContent = 'no match';
+        if (!found) count.textContent = 'No match';
     };
     tab.search.onDidChangeResults(r => {
         count.textContent = r.resultCount > 0
             ? `${r.resultIndex + 1} of ${r.resultCount}`
-            : 'no match';
+            : 'No match';
     });
     input.addEventListener('input', () => doSearch(false));
     input.addEventListener('keydown', ev => {

@@ -81,6 +81,13 @@ function tabEl(tab: Tab): HTMLElement {
     el.appendChild(close);
 
     el.onclick = () => activateTab(tab.key);
+    el.tabIndex = 0;
+    el.onkeydown = ev => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            activateTab(tab.key);
+        }
+    };
     el.onauxclick = ev => { if (ev.button === 1) closeTab(tab.key); };
     el.oncontextmenu = ev => {
         const items: MenuEntry[] = [];

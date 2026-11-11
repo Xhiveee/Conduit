@@ -187,6 +187,7 @@ function renderList(force: boolean) {
             meta.className = 'kmeta';
             meta.textContent = [k.type, k.fingerprint ? k.fingerprint.slice(0, 24) + '…' : '', k.encrypted ? 'encrypted' : ''].filter(Boolean).join(' · ');
             row.append(top, meta);
+            row.tabIndex = 0;
             kinner.appendChild(row);
         }
     }
@@ -269,6 +270,18 @@ function hostRow(h: (typeof state.hosts)[number]): HTMLElement {
     };
     row.oncontextmenu = ev => {
         contextMenuAt(hostMenuItems(h), ev);
+    };
+    row.tabIndex = 0;
+    row.onkeydown = ev => {
+        if (ev.key === 'Enter' || ev.key === ' ') {
+            ev.preventDefault();
+            const existing = state.tabs.find(t => t.hostId === h.id && t.connected);
+            if (existing) {
+                activateTab(existing.key);
+            } else {
+                void connectHost(h);
+            }
+        }
     };
     return row;
 }

@@ -6,7 +6,7 @@ import { toastError } from './toast';
 import { uiSelect, uiNumber } from './ui';
 import { openDialog } from './ui/dialog';
 
-const COLORS = ['', '#86c294', '#7aa6da', '#b798d8', '#d6b26a', '#e07a6e', '#6fbfbf', '#d6a656'];
+const COLORS = ['', '#82aaff', '#d6a656', '#e07a6e', '#b798d8', '#6fbfbf', '#9aa3b5', '#d98a90'];
 
 export function openHostEditor(host: main.Host | null) {
     const modal = document.createElement('div');
@@ -85,8 +85,8 @@ export function openHostEditor(host: main.Host | null) {
     field('Auth method', authSel);
 
     const keyOptions: { value: string; label: string; description?: string }[] = [
-        { value: '', label: 'Select a key…' },
-        { value: '__custom__', label: 'Custom path…', description: 'Enter a path manually' },
+        { value: '', label: 'Select a key' },
+        { value: '__custom__', label: 'Custom path', description: 'Enter a path manually' },
     ];
     for (const k of state.keys.filter(k => k.source === 'file')) {
         keyOptions.push({
