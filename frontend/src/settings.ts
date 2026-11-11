@@ -32,11 +32,20 @@ const TERM_COLOR_KEYS: { key: keyof ITheme; label: string }[] = [
     { key: 'brightWhite', label: 'Bright white' },
 ];
 
-const UI_VARS = [
-    '--bg', '--surface-1', '--surface-2', '--surface-3',
-    '--text', '--text-2', '--text-3',
-    '--accent', '--accent-ink', '--agent', '--danger',
-    '--border', '--border-strong',
+const UI_VARS: { key: string; label: string }[] = [
+    { key: '--bg', label: 'Background' },
+    { key: '--surface-1', label: 'Panels' },
+    { key: '--surface-2', label: 'Inputs & cards' },
+    { key: '--surface-3', label: 'Selected' },
+    { key: '--text', label: 'Text' },
+    { key: '--text-2', label: 'Secondary text' },
+    { key: '--text-3', label: 'Muted text' },
+    { key: '--accent', label: 'Accent' },
+    { key: '--accent-ink', label: 'Text on accent' },
+    { key: '--agent', label: 'Agent activity' },
+    { key: '--danger', label: 'Danger' },
+    { key: '--border', label: 'Border' },
+    { key: '--border-strong', label: 'Strong border' },
 ];
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -384,8 +393,8 @@ function renderThemes(pane: HTMLElement, initialId?: string) {
         uiSub.appendChild(subTitle('Interface colors'));
         const uiGrid = document.createElement('div');
         uiGrid.className = 'var-grid';
-        for (const v of UI_VARS) {
-            uiGrid.appendChild(colorItem(v,
+        for (const { key: v, label: vl } of UI_VARS) {
+            uiGrid.appendChild(colorItem(vl,
                 () => liveTheme()?.ui[v] || '#000000',
                 nv => { const tt = liveTheme(); if (tt) tt.ui[v] = nv; },
                 () => applyTheme(resolveTheme(themeSettings()))));

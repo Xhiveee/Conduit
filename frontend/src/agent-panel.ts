@@ -256,14 +256,68 @@ function msgEl(m: AgentMsg): HTMLElement {
 
 function renderMarkdownLite(src: string): string {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const parts = src.split(/(```[\s\S]*?```)/g);
-    return parts.map(part => {
-        if (part.startsWith('```')) {
-            const body = part.replace(/^```\w*\n?/, '').replace(/```$/, '');
-            return '<pre><code>' + esc(body) + '</code></pre>';
+    const inline = (s: string): string => {
+        const parts = esc(s).split(/(`[^`\n]+`)/g);
+        return parts.map(part => {
+            if (part.length > 1 && part.startsWith('`') && part.endsWith('`')) {
+                return '<code>' + part.slice(1, -1) + '</code>';
+            }
+            return part
+                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+                .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '$1 ($2)')
+                .replace(/\n/g, '<br>');
+        }).join('');
+    };
+    const lines = src.replace(/\r\n/g, '\n').split('\n');
+    const out: string[] = [];
+    const isFence = (l: string) => /^```/.test(l);
+    const isHead = (l: string) => /^#{1,3}\s/.test(l);
+    const isBullet = (l: string) => /^\s*[-*]\s+/.test(l);
+    const isNum = (l: string) => /^\s*\d+\.\s+/.test(l);
+    let i = 0;
+    while (i < lines.length) {
+        const line = lines[i];
+        if (isFence(line)) {
+            const buf: string[] = [];
+            i++;
+            while (i < lines.length && !isFence(lines[i])) {
+                buf.push(lines[i]);
+                i++;
+            }
+            i++;
+            out.push('<pre><code>' + esc(buf.join('\n').replace(/\n+$/, '')) + '</code></pre>');
+            continue;
         }
-        return esc(part).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
-    }).join('');
+        const h = line.match(/^(#{1,3})\s+(.*)/);
+        if (h) {
+            out.push('<div class="md-h">' + inline(h[2]) + '</div>');
+            i++;
+            continue;
+        }
+        if (isBullet(line) || isNum(line)) {
+            const ordered = isNum(line);
+            const tag = ordered ? 'ol' : 'ul';
+            const items: string[] = [];
+            while (i < lines.length && (ordered ? isNum(lines[i]) : isBullet(lines[i]))) {
+                items.push('<li>' + inline(lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/, '')) + '</li>');
+                i++;
+            }
+            out.push('<' + tag + '>' + items.join('') + '</' + tag + '>');
+            continue;
+        }
+        if (line.trim() === '') {
+            i++;
+            continue;
+        }
+        const buf: string[] = [];
+        while (i < lines.length && lines[i].trim() !== '' && !isFence(lines[i]) && !isHead(lines[i]) && !isBullet(lines[i]) && !isNum(lines[i])) {
+            buf.push(lines[i]);
+            i++;
+        }
+        out.push('<div class="md-p">' + inline(buf.join('\n')) + '</div>');
+    }
+    return out.join('');
 }
 
 function toolEl(t: ToolCard): HTMLElement {

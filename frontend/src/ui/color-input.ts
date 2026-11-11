@@ -275,8 +275,15 @@ export function uiColor(opts: {
 
         document.body.appendChild(pop);
         const r = swatch.getBoundingClientRect();
-        pop.style.left = Math.max(4, Math.min(r.left, window.innerWidth - pop.offsetWidth - 4)) + 'px';
-        pop.style.top = (r.bottom + 4 + pop.offsetHeight > window.innerHeight ? r.top - pop.offsetHeight - 4 : r.bottom + 4) + 'px';
+        const pw = pop.offsetWidth;
+        const ph = pop.offsetHeight;
+        let left = r.left;
+        if (left + pw > window.innerWidth - 4) left = r.right - pw;
+        left = Math.max(4, Math.min(left, window.innerWidth - pw - 4));
+        let top = r.bottom + 4;
+        if (top + ph > window.innerHeight - 4) top = Math.max(4, r.top - ph - 4);
+        pop.style.left = left + 'px';
+        pop.style.top = top + 'px';
         syncPop();
         releaseLayer = pushLayer(close);
         document.addEventListener('mousedown', onDocDown, true);

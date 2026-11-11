@@ -794,6 +794,13 @@ body.agent-left #center { order: 4; }
 }
 .msg.assistant p { margin: 0 0 0.5rem; }
 .msg.assistant p:last-child { margin-bottom: 0; }
+.msg.assistant .md-p { margin: 0 0 0.5rem; }
+.msg.assistant .md-p:last-child { margin-bottom: 0; }
+.msg.assistant .md-h { font-size: 0.9375rem; font-weight: 500; margin: 0.625rem 0 0.25rem; }
+.msg.assistant .md-h:first-child { margin-top: 0; }
+.msg.assistant ul, .msg.assistant ol { margin: 0 0 0.5rem; padding-left: 1.25rem; }
+.msg.assistant li { margin: 0.125rem 0; }
+.msg.assistant strong { font-weight: 600; color: var(--text); }
 .msg.assistant pre, .msg.assistant code {
     font-family: var(--font-mono);
     font-size: 0.8125rem;

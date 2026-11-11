@@ -148,8 +148,10 @@ function syncDiscBar(tab: Tab) {
         bar.append(reason, btn);
         frame.appendChild(bar);
     }
-    const reason = bar.querySelector('.disc-reason')!;
-    reason.textContent = 'Disconnected' + (tab.closedReason ? ' · ' + tab.closedReason : '');
+    const reason = bar.querySelector('.disc-reason') as HTMLElement;
+    reason.textContent = tab.closedReason || 'Disconnected';
+    if (tab.closedDetail) reason.dataset.tip = tab.closedDetail;
+    else delete reason.dataset.tip;
 }
 
 function hexToRgb(hex: string): [number, number, number] {

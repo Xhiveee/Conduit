@@ -21,6 +21,7 @@ export interface Tab {
     connected: boolean;
     agentActive: boolean;
     closedReason: string;
+    closedDetail: string;
     error: string;
     pending: { hostId?: string; target?: string } | null;
     term: Terminal | null;
@@ -229,11 +230,12 @@ function wireEvents() {
         while (out.length > 0 && out[out.length - 1].trim() === '') out.pop();
         App.ScreenReply(requestId, out.join('\n')).catch(toastError);
     });
-    EventsOn('session:closed', (id: string, reason: string) => {
+    EventsOn('session:closed', (id: string, reason: string, detail?: string) => {
         const tab = tabBySession(id);
         if (tab) {
             tab.connected = false;
-            tab.closedReason = reason;
+            tab.closedReason = reason || 'Disconnected';
+            tab.closedDetail = detail || '';
             state.sessions = state.sessions.filter(s => s.id !== id);
             notify();
         }
@@ -312,6 +314,7 @@ export function upsertSessionTab(info: main.SessionInfo) {
             connected: true,
             agentActive: false,
             closedReason: '',
+            closedDetail: '',
             error: '',
             pending: null,
             term: null,
@@ -331,6 +334,7 @@ export function upsertSessionTab(info: main.SessionInfo) {
         tab.reconnecting = false;
         tab.connected = true;
         tab.closedReason = '';
+        tab.closedDetail = '';
         tab.error = '';
     }
     state.activeKey = tab.key;
@@ -488,6 +492,7 @@ export function addErrorTab(title: string, error: string, pending: { hostId?: st
         connected: false,
         agentActive: false,
         closedReason: '',
+        closedDetail: '',
         error,
         pending,
         term: null,

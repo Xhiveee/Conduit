@@ -68,7 +68,9 @@ export function initTooltips() {
     document.addEventListener('mouseout', onOut);
     document.addEventListener('mousedown', hide, true);
     window.addEventListener('scroll', hide, true);
-    window.addEventListener('keydown', ev => {
-        if (ev.key === 'Escape') hide();
-    });
+    window.addEventListener('keydown', hide, true);
+    window.addEventListener('blur', hide);
+    new MutationObserver(() => {
+        if (current && !current.isConnected) hide();
+    }).observe(document.body, { childList: true, subtree: true });
 }
