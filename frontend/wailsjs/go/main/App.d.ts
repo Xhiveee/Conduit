@@ -12,6 +12,8 @@ export function AgentStop():Promise<void>;
 
 export function Connect(arg1:string,arg2:number,arg3:number):Promise<string>;
 
+export function ConnectWithSecret(arg1:string,arg2:string,arg3:boolean,arg4:number,arg5:number):Promise<string>;
+
 export function DeleteHost(arg1:string):Promise<void>;
 
 export function Disconnect(arg1:string):Promise<void>;

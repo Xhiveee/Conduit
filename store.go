@@ -53,6 +53,9 @@ type Settings struct {
 	CustomThemes    []Theme    `json:"customThemes"`
 	FontFamily      string     `json:"fontFamily"`
 	FontSize        int        `json:"fontSize"`
+	FontWeight      int        `json:"fontWeight"`
+	FontWeightBold  int        `json:"fontWeightBold"`
+	LetterSpacing   float64    `json:"letterSpacing"`
 	LineHeight      float64    `json:"lineHeight"`
 	CursorStyle     string     `json:"cursorStyle"`
 	CursorBlink     bool       `json:"cursorBlink"`
@@ -92,13 +95,16 @@ func dataDir() string {
 }
 
 const legacyFontFamily = "Cascadia Mono, Consolas, monospace"
+const defaultFontFamily = `"JetBrains Mono", "Cascadia Mono", Consolas, monospace`
 
 func defaultSettings() Settings {
 	return Settings{
 		ThemeID:        "black",
-		FontFamily:     legacyFontFamily,
+		FontFamily:     defaultFontFamily,
 		FontSize:       14,
-		LineHeight:     1.2,
+		FontWeight:     400,
+		FontWeightBold: 600,
+		LineHeight:     1.3,
 		CursorStyle:    "bar",
 		Scrollback:     10000,
 		UIScale:        1,
@@ -166,6 +172,15 @@ func mergeSettings(def, cur Settings, m map[string]interface{}) Settings {
 	}
 	if !has("fontSize") || out.FontSize == 0 {
 		out.FontSize = def.FontSize
+	}
+	if !has("fontWeight") || out.FontWeight == 0 {
+		out.FontWeight = def.FontWeight
+	}
+	if !has("fontWeightBold") || out.FontWeightBold == 0 {
+		out.FontWeightBold = def.FontWeightBold
+	}
+	if !has("letterSpacing") {
+		out.LetterSpacing = def.LetterSpacing
 	}
 	if !has("lineHeight") || out.LineHeight == 0 {
 		out.LineHeight = def.LineHeight

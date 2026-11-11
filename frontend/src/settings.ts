@@ -447,8 +447,33 @@ function renderTerminal(pane: HTMLElement) {
     lhI.max = '2.5';
     lhI.step = '0.05';
     lhI.value = String(s.lineHeight);
-    lhI.onchange = () => update({ lineHeight: parseFloat(lhI.value) || 1.2 });
+    lhI.onchange = () => update({ lineHeight: parseFloat(lhI.value) || 1.3 });
     g.appendChild(row('Line height', '', lhI));
+
+    const weightSel = (val: number, set: (v: number) => void) => {
+        const sel = document.createElement('select');
+        sel.style.width = '140px';
+        for (const w of [300, 400, 500, 600, 700]) {
+            const o = document.createElement('option');
+            o.value = String(w);
+            o.textContent = String(w);
+            sel.appendChild(o);
+        }
+        sel.value = String(val || 400);
+        sel.onchange = () => set(parseInt(sel.value, 10));
+        return sel;
+    };
+    g.appendChild(row('Font weight', '', weightSel(s.fontWeight || 400, v => update({ fontWeight: v }))));
+    g.appendChild(row('Bold weight', '', weightSel(s.fontWeightBold || 600, v => update({ fontWeightBold: v }))));
+
+    const lsI = document.createElement('input');
+    lsI.type = 'number';
+    lsI.min = '-2';
+    lsI.max = '10';
+    lsI.step = '0.5';
+    lsI.value = String(s.letterSpacing || 0);
+    lsI.onchange = () => update({ letterSpacing: parseFloat(lsI.value) || 0 });
+    g.appendChild(row('Letter spacing', 'Pixels between characters', lsI));
 
     const cursorSel = document.createElement('select');
     cursorSel.style.width = '140px';

@@ -1,4 +1,8 @@
 import './style.css';
+import '@fontsource/jetbrains-mono/latin-400.css';
+import '@fontsource/jetbrains-mono/cyrillic-400.css';
+import '@fontsource/jetbrains-mono/latin-600.css';
+import '@fontsource/jetbrains-mono/cyrillic-600.css';
 import * as App from '../wailsjs/go/main/App';
 import { init, onUI, quickConnect, settingsOrDefault } from './state';
 import { renderTabs, handleTabShortcut, focusQuickConnect } from './tabs';
@@ -45,6 +49,10 @@ function setupTitlebar() {
     });
 }
 
+function uiScale(): number {
+    return parseFloat(getComputedStyle(document.documentElement).fontSize) / 16 || 1;
+}
+
 function setupSplitters() {
     const bind = (splitId: string, targetId: string, cssVar: string, min: number, max: number, kind: 'sidebar' | 'agent') => {
         const split = document.getElementById(splitId);
@@ -57,7 +65,7 @@ function setupSplitters() {
         split.addEventListener('mousedown', ev => {
             dragging = true;
             startX = ev.clientX;
-            startW = target.getBoundingClientRect().width;
+            startW = target.getBoundingClientRect().width / uiScale();
             split.classList.add('dragging');
             ev.preventDefault();
         });
@@ -65,9 +73,9 @@ function setupSplitters() {
             if (!dragging) return;
             const s = settingsOrDefault();
             const growsLeft = kind === 'sidebar' || s.agentSide === 'left';
-            const delta = growsLeft ? ev.clientX - startX : startX - ev.clientX;
+            const delta = (growsLeft ? ev.clientX - startX : startX - ev.clientX) / uiScale();
             currentW = Math.min(max, Math.max(min, startW + delta));
-            document.documentElement.style.setProperty(cssVar, currentW + 'px');
+            document.documentElement.style.setProperty(cssVar, (currentW / 16) + 'rem');
             requestAnimationFrame(fitActive);
         });
         window.addEventListener('mouseup', () => {

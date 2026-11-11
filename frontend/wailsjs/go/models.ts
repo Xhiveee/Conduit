@@ -127,6 +127,9 @@ export namespace main {
 	    customThemes: Theme[];
 	    fontFamily: string;
 	    fontSize: number;
+	    fontWeight: number;
+	    fontWeightBold: number;
+	    letterSpacing: number;
 	    lineHeight: number;
 	    cursorStyle: string;
 	    cursorBlink: boolean;
@@ -152,6 +155,9 @@ export namespace main {
 	        this.customThemes = this.convertValues(source["customThemes"], Theme);
 	        this.fontFamily = source["fontFamily"];
 	        this.fontSize = source["fontSize"];
+	        this.fontWeight = source["fontWeight"];
+	        this.fontWeightBold = source["fontWeightBold"];
+	        this.letterSpacing = source["letterSpacing"];
 	        this.lineHeight = source["lineHeight"];
 	        this.cursorStyle = source["cursorStyle"];
 	        this.cursorBlink = source["cursorBlink"];

@@ -22,6 +22,7 @@ export interface Tab {
     term: Terminal | null;
     fit: FitAddon | null;
     termEl: HTMLElement | null;
+    pendingData?: string[];
 }
 
 export interface AgentMsg {
@@ -123,9 +124,9 @@ export function applyAll() {
     applyTheme(resolveTheme(themeSettings()));
     document.body.classList.toggle('agent-right', s.agentSide !== 'left');
     document.body.classList.toggle('agent-left', s.agentSide === 'left');
-    document.documentElement.style.setProperty('--sidebar-w', s.sidebarWidth + 'px');
-    document.documentElement.style.setProperty('--agent-w', s.agentWidth + 'px');
-    document.documentElement.style.zoom = String(s.uiScale || 1);
+    document.documentElement.style.setProperty('--ui-scale', String(s.uiScale || 1));
+    document.documentElement.style.setProperty('--sidebar-w', (s.sidebarWidth / 16) + 'rem');
+    document.documentElement.style.setProperty('--agent-w', (s.agentWidth / 16) + 'rem');
     const sidebar = document.getElementById('sidebar');
     const agent = document.getElementById('agent');
     const splitS = document.getElementById('split-sidebar');
@@ -146,6 +147,37 @@ export function applyAll() {
         document.getElementById('custom-css')?.remove();
     }
     state.tabs.forEach(t => applyTermOptions(t));
+    void ensureTermFont().then(() => {
+        state.tabs.forEach(t => {
+            if (!t.term) return;
+            t.term.refresh(0, t.term.rows - 1);
+            fitTab(t);
+        });
+    }).catch(toastError);
+}
+
+let fontKey = '';
+let fontLoading: Promise<void> | null = null;
+
+function firstFamily(stack: string): string {
+    const first = (stack || '').split(',')[0].trim();
+    return first.replace(/^['"]|['"]$/g, '');
+}
+
+export function ensureTermFont(): Promise<void> {
+    const family = firstFamily(state.settings?.fontFamily || '');
+    if (!family) return Promise.resolve();
+    if (fontKey !== family) {
+        fontKey = family;
+        fontLoading = null;
+    }
+    if (!fontLoading) {
+        fontLoading = Promise.all([
+            document.fonts.load(`14px "${family}"`),
+            document.fonts.load(`600 14px "${family}"`),
+        ]).then(() => undefined);
+    }
+    return fontLoading;
 }
 
 export function applyTermOptions(tab: Tab) {
@@ -155,6 +187,9 @@ export function applyTermOptions(tab: Tab) {
     tab.term.options.theme = cur;
     tab.term.options.fontFamily = s.fontFamily;
     tab.term.options.fontSize = s.fontSize;
+    tab.term.options.fontWeight = s.fontWeight || 400;
+    tab.term.options.fontWeightBold = s.fontWeightBold || 600;
+    tab.term.options.letterSpacing = s.letterSpacing || 0;
     tab.term.options.lineHeight = s.lineHeight;
     tab.term.options.cursorStyle = (s.cursorStyle || 'bar') as 'block' | 'underline' | 'bar';
     tab.term.options.cursorBlink = s.cursorBlink;
@@ -169,15 +204,12 @@ function wireEvents() {
     });
     EventsOn('session:data', (id: string, b64: string) => {
         const tab = tabBySession(id);
-        if (!tab?.term) return;
-        try {
-            const bin = atob(b64);
-            const bytes = new Uint8Array(bin.length);
-            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-            tab.term.write(bytes);
-        } catch (err) {
-            toastError(err);
+        if (!tab) return;
+        if (!tab.term) {
+            (tab.pendingData ??= []).push(b64);
+            return;
         }
+        writeTermData(tab, b64);
     });
     EventsOn('screen:request', (requestId: string, sessionId: string, lines: number) => {
         const term = tabBySession(sessionId)?.term;
@@ -240,6 +272,18 @@ function wireEvents() {
         state.agentMessages.push({ id: nextMsgId(), kind: 'note', content: msg });
         notify();
     });
+}
+
+export function writeTermData(tab: Tab, b64: string) {
+    if (!tab.term) return;
+    try {
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        tab.term.write(bytes);
+    } catch (err) {
+        toastError(err);
+    }
 }
 
 export function upsertSessionTab(info: main.SessionInfo) {

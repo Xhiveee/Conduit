@@ -4,7 +4,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import * as App from '../wailsjs/go/main/App';
-import { state, settingsOrDefault, themeSettings, applyTermOptions, connectHost, quickConnect, retryTab, onTabClosed, fitTab, activeTab, type Tab } from './state';
+import { state, settingsOrDefault, themeSettings, applyTermOptions, connectHost, quickConnect, retryTab, onTabClosed, fitTab, activeTab, ensureTermFont, writeTermData, type Tab } from './state';
 import { currentXtermTheme } from './themes';
 import { icon } from './icons';
 import { toastError } from './toast';
@@ -24,7 +24,7 @@ export function syncTerminals() {
     const root = termsRoot();
     for (const tab of state.tabs) {
         if (!tab.termEl) {
-            createTermHost(tab);
+            void createTermHost(tab);
         }
         tab.termEl!.classList.toggle('active', tab.key === state.activeKey);
         tab.termEl!.querySelector('.term-frame')?.classList.toggle('agent-active', tab.agentActive);
@@ -40,7 +40,7 @@ export function syncTerminals() {
     renderEmpty();
 }
 
-function createTermHost(tab: Tab) {
+async function createTermHost(tab: Tab) {
     const root = termsRoot();
     const host = document.createElement('div');
     host.className = 'term-host';
@@ -60,6 +60,7 @@ function createTermHost(tab: Tab) {
     }
     if (!tab.sessionId) return;
 
+    await ensureTermFont().catch(toastError);
     const s = settingsOrDefault();
     const term = new Terminal({
         fontFamily: s.fontFamily,
@@ -79,6 +80,10 @@ function createTermHost(tab: Tab) {
     tab.term = term;
     tab.fit = fit;
     applyTermOptions(tab);
+    if (tab.pendingData?.length) {
+        for (const d of tab.pendingData) writeTermData(tab, d);
+        tab.pendingData = [];
+    }
 
     term.onData(data => {
         if (tab.sessionId && tab.connected) {
