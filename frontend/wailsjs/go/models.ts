@@ -7,6 +7,7 @@ export namespace main {
 	    approveCommands: boolean;
 	    maxSteps: number;
 	    instructions: string;
+	    contextWindow: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AISettings(source);
@@ -20,8 +21,149 @@ export namespace main {
 	        this.approveCommands = source["approveCommands"];
 	        this.maxSteps = source["maxSteps"];
 	        this.instructions = source["instructions"];
+	        this.contextWindow = source["contextWindow"];
 	    }
 	}
+	export class ChatLogEntry {
+	    kind: string;
+	    content: string;
+	    callId?: string;
+	    name?: string;
+	    args?: string;
+	    status?: string;
+	    result?: string;
+	    ts: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChatLogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.content = source["content"];
+	        this.callId = source["callId"];
+	        this.name = source["name"];
+	        this.args = source["args"];
+	        this.status = source["status"];
+	        this.result = source["result"];
+	        this.ts = source["ts"];
+	    }
+	}
+	export class ChatUsage {
+	    promptTokens: number;
+	    completionTokens: number;
+	    totalTokens: number;
+	    lastPromptTokens: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChatUsage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.promptTokens = source["promptTokens"];
+	        this.completionTokens = source["completionTokens"];
+	        this.totalTokens = source["totalTokens"];
+	        this.lastPromptTokens = source["lastPromptTokens"];
+	    }
+	}
+	export class ChatDetail {
+	    id: string;
+	    title: string;
+	    group: string;
+	    hostId: string;
+	    archived: boolean;
+	    createdAt: number;
+	    updatedAt: number;
+	    usage: ChatUsage;
+	    busy: boolean;
+	    log: ChatLogEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ChatDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.group = source["group"];
+	        this.hostId = source["hostId"];
+	        this.archived = source["archived"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.usage = this.convertValues(source["usage"], ChatUsage);
+	        this.busy = source["busy"];
+	        this.log = this.convertValues(source["log"], ChatLogEntry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class ChatSummary {
+	    id: string;
+	    title: string;
+	    group: string;
+	    hostId: string;
+	    archived: boolean;
+	    createdAt: number;
+	    updatedAt: number;
+	    usage: ChatUsage;
+	    busy: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChatSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.group = source["group"];
+	        this.hostId = source["hostId"];
+	        this.archived = source["archived"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.usage = this.convertValues(source["usage"], ChatUsage);
+	        this.busy = source["busy"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class Host {
 	    id: string;
 	    name: string;
@@ -102,29 +244,8 @@ export namespace main {
 	        this.color = source["color"];
 	    }
 	}
-	export class Theme {
-	    id: string;
-	    name: string;
-	    builtin: boolean;
-	    ui: Record<string, string>;
-	    terminal: Record<string, string>;
-	
-	    static createFrom(source: any = {}) {
-	        return new Theme(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.builtin = source["builtin"];
-	        this.ui = source["ui"];
-	        this.terminal = source["terminal"];
-	    }
-	}
 	export class Settings {
 	    themeId: string;
-	    customThemes: Theme[];
 	    fontFamily: string;
 	    fontSize: number;
 	    fontWeight: number;
@@ -142,7 +263,7 @@ export namespace main {
 	    sidebarVisible: boolean;
 	    agentVisible: boolean;
 	    agentSide: string;
-	    customCss: string;
+	    reduceMotion: boolean;
 	    ai: AISettings;
 	
 	    static createFrom(source: any = {}) {
@@ -152,7 +273,6 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.themeId = source["themeId"];
-	        this.customThemes = this.convertValues(source["customThemes"], Theme);
 	        this.fontFamily = source["fontFamily"];
 	        this.fontSize = source["fontSize"];
 	        this.fontWeight = source["fontWeight"];
@@ -170,7 +290,7 @@ export namespace main {
 	        this.sidebarVisible = source["sidebarVisible"];
 	        this.agentVisible = source["agentVisible"];
 	        this.agentSide = source["agentSide"];
-	        this.customCss = source["customCss"];
+	        this.reduceMotion = source["reduceMotion"];
 	        this.ai = this.convertValues(source["ai"], AISettings);
 	    }
 	

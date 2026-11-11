@@ -3,7 +3,6 @@ export type { SelectOption } from './select';
 export { uiSwitch } from './switch';
 export { uiSlider } from './slider';
 export { uiNumber } from './number-input';
-export { uiColor, parseCssColor } from './color-input';
 export { showMenuAt, contextMenuAt, installContextMenuGuard } from './menu';
 export type { MenuEntry } from './menu';
 export { openDialog, closeTopDialog, confirmDialog, promptDialog } from './dialog';

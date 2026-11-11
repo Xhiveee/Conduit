@@ -330,19 +330,29 @@ export function builtinTheme(id: string): ThemeDef | undefined {
     return BUILTIN_THEMES.find(t => t.id === id);
 }
 
-export function resolveTheme(settings: { themeId: string; customThemes?: ThemeDef[] }): ThemeDef {
-    const custom = settings.customThemes?.find(t => t.id === settings.themeId);
-    if (custom) return custom;
+export function resolveTheme(settings: { themeId: string }): ThemeDef {
     return builtinTheme(settings.themeId) ?? BUILTIN_THEMES[0];
 }
+
+const ANSI_CSS_KEYS: Record<string, string> = {
+    black: 'black', red: 'red', green: 'green', yellow: 'yellow',
+    blue: 'blue', magenta: 'magenta', cyan: 'cyan', white: 'white',
+    brightBlack: 'brightBlack', brightRed: 'brightRed', brightGreen: 'brightGreen',
+    brightYellow: 'brightYellow', brightBlue: 'brightBlue', brightMagenta: 'brightMagenta',
+    brightCyan: 'brightCyan', brightWhite: 'brightWhite',
+};
 
 export function applyTheme(theme: ThemeDef) {
     const root = document.documentElement;
     for (const [k, v] of Object.entries(theme.ui)) {
         root.style.setProperty(k, v);
     }
+    for (const [k, css] of Object.entries(ANSI_CSS_KEYS)) {
+        const v = (theme.terminal as Record<string, string>)[k];
+        if (v) root.style.setProperty('--term-' + css, v);
+    }
 }
 
-export function currentXtermTheme(settings: { themeId: string; customThemes?: ThemeDef[] }): ITheme {
+export function currentXtermTheme(settings: { themeId: string }): ITheme {
     return resolveTheme(settings).terminal;
 }

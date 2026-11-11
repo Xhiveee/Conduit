@@ -6,16 +6,20 @@ export function AgentApprove(arg1, arg2) {
   return window['go']['main']['App']['AgentApprove'](arg1, arg2);
 }
 
-export function AgentReset() {
-  return window['go']['main']['App']['AgentReset']();
+export function AgentSend(arg1, arg2, arg3) {
+  return window['go']['main']['App']['AgentSend'](arg1, arg2, arg3);
 }
 
-export function AgentSend(arg1, arg2) {
-  return window['go']['main']['App']['AgentSend'](arg1, arg2);
+export function AgentStop(arg1) {
+  return window['go']['main']['App']['AgentStop'](arg1);
 }
 
-export function AgentStop() {
-  return window['go']['main']['App']['AgentStop']();
+export function ArchiveChat(arg1, arg2) {
+  return window['go']['main']['App']['ArchiveChat'](arg1, arg2);
+}
+
+export function AttachChat(arg1, arg2) {
+  return window['go']['main']['App']['AttachChat'](arg1, arg2);
 }
 
 export function Connect(arg1, arg2, arg3) {
@@ -26,6 +30,14 @@ export function ConnectWithSecret(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['ConnectWithSecret'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function CreateChat(arg1) {
+  return window['go']['main']['App']['CreateChat'](arg1);
+}
+
+export function DeleteChat(arg1) {
+  return window['go']['main']['App']['DeleteChat'](arg1);
+}
+
 export function DeleteHost(arg1) {
   return window['go']['main']['App']['DeleteHost'](arg1);
 }
@@ -34,12 +46,20 @@ export function Disconnect(arg1) {
   return window['go']['main']['App']['Disconnect'](arg1);
 }
 
+export function GetChat(arg1) {
+  return window['go']['main']['App']['GetChat'](arg1);
+}
+
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
 export function ImportSSHConfig() {
   return window['go']['main']['App']['ImportSSHConfig']();
+}
+
+export function ListChats() {
+  return window['go']['main']['App']['ListChats']();
 }
 
 export function ListHosts() {
@@ -58,6 +78,10 @@ export function QuickConnect(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['QuickConnect'](arg1, arg2, arg3, arg4);
 }
 
+export function RenameChat(arg1, arg2) {
+  return window['go']['main']['App']['RenameChat'](arg1, arg2);
+}
+
 export function Resize(arg1, arg2, arg3) {
   return window['go']['main']['App']['Resize'](arg1, arg2, arg3);
 }
@@ -72,6 +96,10 @@ export function SaveSettings(arg1) {
 
 export function ScreenReply(arg1, arg2) {
   return window['go']['main']['App']['ScreenReply'](arg1, arg2);
+}
+
+export function SetChatGroup(arg1, arg2) {
+  return window['go']['main']['App']['SetChatGroup'](arg1, arg2);
 }
 
 export function Write(arg1, arg2) {

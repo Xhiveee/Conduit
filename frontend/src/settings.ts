@@ -1,52 +1,11 @@
 import * as App from '../wailsjs/go/main/App';
-import { notify, applyAll, settingsOrDefault, customThemes, themeSettings } from './state';
-import { BUILTIN_THEMES, applyTheme, resolveTheme, type ThemeDef } from './themes';
+import { notify, applyAll, settingsOrDefault } from './state';
+import { BUILTIN_THEMES } from './themes';
 import { icon } from './icons';
 import { toastError } from './toast';
-import { uiSelect, uiSwitch, uiSlider, uiNumber, uiColor } from './ui';
-import { openDialog, confirmDialog } from './ui/dialog';
+import { uiSelect, uiSwitch, uiSlider, uiNumber } from './ui';
+import { openDialog } from './ui/dialog';
 import type { main } from '../wailsjs/go/models';
-import type { ITheme } from '@xterm/xterm';
-
-const TERM_COLOR_KEYS: { key: keyof ITheme; label: string }[] = [
-    { key: 'foreground', label: 'Foreground' },
-    { key: 'background', label: 'Background' },
-    { key: 'cursor', label: 'Cursor' },
-    { key: 'cursorAccent', label: 'Cursor accent' },
-    { key: 'selectionBackground', label: 'Selection' },
-    { key: 'black', label: 'Black' },
-    { key: 'red', label: 'Red' },
-    { key: 'green', label: 'Green' },
-    { key: 'yellow', label: 'Yellow' },
-    { key: 'blue', label: 'Blue' },
-    { key: 'magenta', label: 'Magenta' },
-    { key: 'cyan', label: 'Cyan' },
-    { key: 'white', label: 'White' },
-    { key: 'brightBlack', label: 'Bright black' },
-    { key: 'brightRed', label: 'Bright red' },
-    { key: 'brightGreen', label: 'Bright green' },
-    { key: 'brightYellow', label: 'Bright yellow' },
-    { key: 'brightBlue', label: 'Bright blue' },
-    { key: 'brightMagenta', label: 'Bright magenta' },
-    { key: 'brightCyan', label: 'Bright cyan' },
-    { key: 'brightWhite', label: 'Bright white' },
-];
-
-const UI_VARS: { key: string; label: string }[] = [
-    { key: '--bg', label: 'Background' },
-    { key: '--surface-1', label: 'Panels' },
-    { key: '--surface-2', label: 'Inputs & cards' },
-    { key: '--surface-3', label: 'Selected' },
-    { key: '--text', label: 'Text' },
-    { key: '--text-2', label: 'Secondary text' },
-    { key: '--text-3', label: 'Muted text' },
-    { key: '--accent', label: 'Accent' },
-    { key: '--accent-ink', label: 'Text on accent' },
-    { key: '--agent', label: 'Agent activity' },
-    { key: '--danger', label: 'Danger' },
-    { key: '--border', label: 'Border' },
-    { key: '--border-strong', label: 'Strong border' },
-];
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -74,11 +33,9 @@ interface SettingsSection {
 
 const SECTIONS: SettingsSection[] = [
     { id: 'appearance', label: 'Appearance', render: renderAppearance },
-    { id: 'themes', label: 'Themes', render: renderThemes },
     { id: 'terminal', label: 'Terminal', render: renderTerminal },
     { id: 'agent', label: 'Agent', render: renderAgentSection },
     { id: 'keyboard', label: 'Keyboard', render: renderKeyboard },
-    { id: 'css', label: 'Custom CSS', render: renderCustomCSS },
 ];
 
 let settingsClose: (() => void) | null = null;
@@ -152,13 +109,6 @@ function group(): HTMLElement {
     return s;
 }
 
-function subTitle(text: string): HTMLElement {
-    const h = document.createElement('div');
-    h.className = 'set-sub';
-    h.textContent = text;
-    return h;
-}
-
 function row(label: string, sub: string, control: HTMLElement): HTMLElement {
     const r = document.createElement('div');
     r.className = 'set-row';
@@ -184,11 +134,7 @@ function renderAppearance(pane: HTMLElement) {
 
     const themes = document.createElement('div');
     themes.className = 'theme-grid';
-    const allThemes: ThemeDef[] = [
-        ...BUILTIN_THEMES,
-        ...customThemes(),
-    ];
-    for (const t of allThemes) {
+    for (const t of BUILTIN_THEMES) {
         const card = document.createElement('button');
         card.className = 'theme-card' + (s.themeId === t.id ? ' sel' : '');
         const prev = document.createElement('div');
@@ -212,10 +158,6 @@ function renderAppearance(pane: HTMLElement) {
         const name = document.createElement('div');
         name.className = 'theme-name';
         name.textContent = t.name;
-        const tag = document.createElement('span');
-        tag.className = 'dim';
-        tag.textContent = t.builtin ? 'built-in' : 'custom';
-        name.appendChild(tag);
         card.append(prev, name);
         card.onclick = () => {
             if (s.themeId === t.id) return;
@@ -254,169 +196,8 @@ function renderAppearance(pane: HTMLElement) {
 
     g.appendChild(row('Sidebar', 'Show the host list', toggle(s.sidebarVisible, v => update({ sidebarVisible: v }))));
     g.appendChild(row('Agent panel', 'Show the AI assistant', toggle(s.agentVisible, v => update({ agentVisible: v }))));
+    g.appendChild(row('Reduce motion', 'Minimize animations and transitions', toggle(!!s.reduceMotion, v => update({ reduceMotion: v }))));
 
-    pane.appendChild(g);
-}
-
-function renderThemes(pane: HTMLElement, initialId?: string) {
-    const s = settingsOrDefault();
-    const g = group();
-
-    const allThemes: ThemeDef[] = [...BUILTIN_THEMES, ...customThemes()];
-    let selValue = initialId ?? s.themeId;
-    const cur = () => allThemes.find(t => t.id === selValue) ?? customThemes().find(t => t.id === selValue);
-
-    const top = document.createElement('div');
-    top.className = 'set-row';
-    const topLabel = document.createElement('label');
-    topLabel.textContent = 'Theme';
-    const sel = uiSelect({
-        value: selValue,
-        options: allThemes.map(t => ({
-            value: t.id,
-            label: t.name,
-            description: t.builtin ? 'built-in' : 'custom',
-        })),
-        onChange: v => {
-            selValue = v;
-            nameI.value = cur()?.name ?? '';
-            renderThemeVars();
-        },
-    });
-    top.append(topLabel, sel);
-
-    const dupBtn = document.createElement('button');
-    dupBtn.className = 'btn';
-    dupBtn.style.marginLeft = '0.5rem';
-    dupBtn.textContent = 'Duplicate as custom';
-    dupBtn.onclick = () => {
-        const src = cur() ?? allThemes[0];
-        const copy: ThemeDef = {
-            id: 'custom-' + Date.now().toString(36),
-            name: src.name + ' copy',
-            builtin: false,
-            ui: { ...src.ui },
-            terminal: { ...(src.terminal as Record<string, string>) } as ITheme,
-        };
-        const cur2 = settingsOrDefault();
-        cur2.customThemes = [...(cur2.customThemes ?? []), copy as unknown as main.Theme];
-        update({ customThemes: cur2.customThemes });
-        pane.innerHTML = '';
-        renderThemes(pane, copy.id);
-    };
-    top.appendChild(dupBtn);
-    g.appendChild(top);
-
-    const nameRow = document.createElement('div');
-    nameRow.className = 'set-row';
-    nameRow.style.display = 'none';
-    const nameI = document.createElement('input');
-    nameI.style.width = '13.75rem';
-    nameI.onchange = () => {
-        const t = cur();
-        if (t) {
-            t.name = nameI.value;
-            persist();
-        }
-    };
-    const nameL = document.createElement('label');
-    nameL.textContent = 'Custom theme name';
-    nameRow.append(nameL, nameI);
-    g.appendChild(nameRow);
-
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn danger';
-    delBtn.style.margin = '0.25rem 0 0.75rem';
-    delBtn.style.display = 'none';
-    delBtn.textContent = 'Delete custom theme';
-    delBtn.onclick = () => {
-        const t = cur();
-        if (!t) return;
-        void confirmDialog({
-            title: 'Delete theme',
-            message: `Delete theme "${t.name}"?`,
-            confirmLabel: 'Delete',
-            danger: true,
-        }).then(ok => {
-            if (!ok) return;
-            const cur2 = settingsOrDefault();
-            cur2.customThemes = (cur2.customThemes ?? []).filter((x: any) => x.id !== t.id);
-            if (cur2.themeId === t.id) update({ themeId: 'black', customThemes: cur2.customThemes });
-            else update({ customThemes: cur2.customThemes });
-            selValue = settingsOrDefault().themeId;
-            renderThemeVars();
-        });
-    };
-    g.appendChild(delBtn);
-
-    const varsBox = document.createElement('div');
-    g.appendChild(varsBox);
-
-    function colorItem(labelText: string, get: () => string, set: (v: string) => void, onLive: () => void) {
-        const item = document.createElement('div');
-        item.className = 'var-item';
-        const l = document.createElement('label');
-        l.textContent = labelText;
-        const picker = uiColor({
-            value: get(),
-            allowAlpha: true,
-            onChange: v => {
-                set(v);
-                onLive();
-                persist();
-            },
-        });
-        l.appendChild(picker);
-        item.appendChild(l);
-        return item;
-    }
-
-    function renderThemeVars() {
-        varsBox.innerHTML = '';
-        const t = cur();
-        const isCustom = !!t && !t.builtin;
-        nameRow.style.display = isCustom ? '' : 'none';
-        delBtn.style.display = isCustom ? '' : 'none';
-        if (!t || t.builtin) {
-            const note = document.createElement('div');
-            note.className = 'muted';
-            note.style.fontSize = '0.75rem';
-            note.textContent = 'Built-in themes are read-only. Duplicate one to customize it.';
-            varsBox.appendChild(note);
-            return;
-        }
-        nameI.value = t.name;
-        const themeId = t.id;
-        const liveTheme = () => customThemes().find(x => x.id === themeId) as ThemeDef | undefined;
-
-        const uiSub = group();
-        uiSub.appendChild(subTitle('Interface colors'));
-        const uiGrid = document.createElement('div');
-        uiGrid.className = 'var-grid';
-        for (const { key: v, label: vl } of UI_VARS) {
-            uiGrid.appendChild(colorItem(vl,
-                () => liveTheme()?.ui[v] || '#000000',
-                nv => { const tt = liveTheme(); if (tt) tt.ui[v] = nv; },
-                () => applyTheme(resolveTheme(themeSettings()))));
-        }
-        uiSub.appendChild(uiGrid);
-        varsBox.appendChild(uiSub);
-
-        const termSub = group();
-        termSub.appendChild(subTitle('Terminal colors'));
-        const tgrid = document.createElement('div');
-        tgrid.className = 'var-grid';
-        for (const { key, label } of TERM_COLOR_KEYS) {
-            tgrid.appendChild(colorItem(label,
-                () => (liveTheme()?.terminal as Record<string, string> | undefined)?.[key as string] || '#000000',
-                nv => { const tt = liveTheme(); if (tt) (tt.terminal as Record<string, string>)[key as string] = nv; },
-                () => applyAll()));
-        }
-        termSub.appendChild(tgrid);
-        varsBox.appendChild(termSub);
-    }
-
-    renderThemeVars();
     pane.appendChild(g);
 }
 
@@ -451,12 +232,11 @@ function renderTerminal(pane: HTMLElement) {
 
     const weightSel = (val: number, set: (v: number) => void) => {
         let v = val || 400;
-        const sel = uiSelect({
+        return uiSelect({
             value: String(v),
             options: [300, 400, 500, 600, 700].map(w => ({ value: String(w), label: String(w) })),
             onChange: o => { v = parseInt(o, 10); set(v); },
         });
-        return sel;
     };
     g.appendChild(row('Font weight', '', weightSel(s.fontWeight || 400, v => update({ fontWeight: v }))));
     g.appendChild(row('Bold weight', '', weightSel(s.fontWeightBold || 600, v => update({ fontWeightBold: v }))));
@@ -551,6 +331,20 @@ function renderAgentSection(pane: HTMLElement) {
     stepsF.append(stepsL, stepsI);
     g.appendChild(stepsF);
 
+    const ctxI = uiNumber({
+        value: s.ai.contextWindow || 128000,
+        min: 1024,
+        max: 2000000,
+        step: 1024,
+        onChange: v => { ai().contextWindow = v; persistAI(); notify(); },
+    });
+    const ctxF = document.createElement('div');
+    ctxF.className = 'field';
+    const ctxL = document.createElement('label');
+    ctxL.textContent = 'Context window';
+    ctxF.append(ctxL, ctxI);
+    g.appendChild(ctxF);
+
     g.appendChild(row('Approve commands', 'Ask before the agent runs commands or changes hosts', toggle(s.ai.approveCommands, v => { ai().approveCommands = v; persistAI(); })));
 
     const instI = document.createElement('textarea');
@@ -570,26 +364,6 @@ function renderAgentSection(pane: HTMLElement) {
 
 function persistAI() {
     persist();
-}
-
-function renderCustomCSS(pane: HTMLElement) {
-    const s = settingsOrDefault();
-    const g = group();
-    const ta = document.createElement('textarea');
-    ta.value = s.customCss;
-    ta.placeholder = '.term-frame { border-color: red; }';
-    ta.style.width = '100%';
-    ta.style.minHeight = '90px';
-    ta.style.fontFamily = 'var(--font-mono)';
-    ta.style.fontSize = '12px';
-    ta.onchange = () => update({ customCss: ta.value });
-    const f = document.createElement('div');
-    f.className = 'field full';
-    const l = document.createElement('label');
-    l.textContent = 'Injected into the page as a <style> tag';
-    f.append(l, ta);
-    g.appendChild(f);
-    pane.appendChild(g);
 }
 
 const KEYBOARD_SHORTCUTS: [string, string][] = [

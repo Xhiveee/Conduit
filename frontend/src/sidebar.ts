@@ -1,5 +1,5 @@
 import * as App from '../wailsjs/go/main/App';
-import { state, onUI, connectHost, activateTab, sessionOpenForHost, refreshHosts, type Tab } from './state';
+import { state, onUI, connectHost, activateTab, sessionOpenForHost, refreshHosts, openChatForHost, type Tab } from './state';
 import { icon } from './icons';
 import { openHostEditor } from './host-editor';
 import { toastError, toastInfo } from './toast';
@@ -178,6 +178,7 @@ function hostAddress(h: (typeof state.hosts)[number]): string {
 function hostMenuItems(h: (typeof state.hosts)[number]): MenuEntry[] {
     return [
         { label: 'Edit', icon: 'pencil', onSelect: () => openHostEditor(h) },
+        { label: 'Open chat', icon: 'message-square', onSelect: () => { void openChatForHost(h.id); } },
         { label: 'Duplicate', icon: 'copy', onSelect: () => { void duplicateHost(h); } },
         { label: 'Copy address', icon: 'clipboard', onSelect: () => { void navigator.clipboard.writeText(hostAddress(h)).catch(toastError); } },
         { sep: true },

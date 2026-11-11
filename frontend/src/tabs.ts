@@ -25,7 +25,7 @@ export function renderTabs() {
             node.style.removeProperty('--tab-color');
         }
         const dot = node.querySelector('.t-dot') as HTMLElement;
-        dot.className = 't-dot' + (tab.error ? ' err' : tab.agentActive ? ' agent' : tab.connected ? ' on' : '');
+        dot.className = 't-dot' + (tab.error ? ' err' : tab.connecting ? ' conn' : tab.agentActive ? ' agent' : tab.connected ? ' on' : '');
         const title = node.querySelector('.t-title') as HTMLElement;
         if (title.textContent !== tab.title) title.textContent = tab.title;
         node.dataset.tip = tab.closedReason || tab.error ? tab.title + ' — ' + (tab.closedReason || tab.error) : tab.title;

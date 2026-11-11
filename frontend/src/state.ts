@@ -4,7 +4,7 @@ import type { SearchAddon } from '@xterm/addon-search';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import * as App from '../wailsjs/go/main/App';
 import type { main } from '../wailsjs/go/models';
-import { applyTheme, currentXtermTheme, resolveTheme, type ThemeDef } from './themes';
+import { applyTheme, currentXtermTheme, resolveTheme } from './themes';
 import { toastError } from './toast';
 import { promptDialog } from './ui/dialog';
 
@@ -18,6 +18,7 @@ export interface Tab {
     address: string;
     qcTarget: string;
     reconnecting: boolean;
+    connecting: boolean;
     connected: boolean;
     agentActive: boolean;
     closedReason: string;
@@ -28,6 +29,7 @@ export interface Tab {
     fit: FitAddon | null;
     search: SearchAddon | null;
     termEl: HTMLElement | null;
+    termRequested?: boolean;
     pendingData?: string[];
 }
 
@@ -48,6 +50,16 @@ export interface ToolCard {
     open: boolean;
 }
 
+export interface ChatView {
+    id: string;
+    entries: AgentMsg[];
+    tools: Map<string, ToolCard>;
+    busy: boolean;
+    thinking: boolean;
+    usage: main.ChatUsage | null;
+    loaded: boolean;
+}
+
 export const state = {
     settings: null as main.Settings | null,
     hosts: [] as main.Host[],
@@ -55,9 +67,12 @@ export const state = {
     sessions: [] as main.SessionInfo[],
     tabs: [] as Tab[],
     activeKey: '',
-    agentMessages: [] as AgentMsg[],
-    agentTools: new Map<string, ToolCard>(),
-    agentBusy: false,
+    chats: new Map<string, ChatView>(),
+    chatList: [] as main.ChatSummary[],
+    activeChatId: '',
+    chatListOpen: false,
+    chatListLoading: false,
+    booted: false,
     msgSeq: 0,
 };
 
@@ -96,33 +111,130 @@ export function nextMsgId(): number {
 }
 
 export async function init() {
-    const [settings, hosts, keys, sessions] = await Promise.all([
+    const [settings, hosts, keys, sessions, chats] = await Promise.all([
         App.GetSettings(),
         App.ListHosts(),
         App.ListKeys(),
         App.ListSessions(),
+        App.ListChats(),
     ]);
     state.settings = settings;
     state.hosts = hosts;
     state.keys = keys;
     state.sessions = sessions;
+    state.chatList = chats;
+    const first = chats.find(c => !c.archived);
+    if (first) state.activeChatId = first.id;
     for (const s of sessions) upsertSessionTab(s);
     applyAll();
     wireEvents();
+    state.booted = true;
     notify();
+    if (state.activeChatId) void loadChat(state.activeChatId);
 }
 
 export function settingsOrDefault(): main.Settings {
     return state.settings as main.Settings;
 }
 
-export function customThemes(): ThemeDef[] {
-    return (state.settings?.customThemes ?? []) as unknown as ThemeDef[];
+export function activeChat(): ChatView | null {
+    return state.chats.get(state.activeChatId) ?? null;
+}
+
+export function chatView(id: string): ChatView {
+    let v = state.chats.get(id);
+    if (!v) {
+        v = { id, entries: [], tools: new Map(), busy: false, thinking: false, usage: null, loaded: false };
+        state.chats.set(id, v);
+    }
+    return v;
+}
+
+export function chatSummary(id: string): main.ChatSummary | undefined {
+    return state.chatList.find(c => c.id === id);
+}
+
+export function chatTargetSession(chatId: string): string {
+    const sum = chatSummary(chatId);
+    if (sum?.hostId) {
+        const matches = state.sessions.filter(s => s.hostId === sum.hostId);
+        if (matches.length) return matches[matches.length - 1].id;
+        const tab = [...state.tabs].reverse().find(t => t.hostId === sum.hostId && t.connected);
+        if (tab) return tab.sessionId;
+    }
+    return agentTargetId();
+}
+
+export async function loadChat(id: string) {
+    const v = chatView(id);
+    try {
+        const d = await App.GetChat(id);
+        v.loaded = true;
+        v.entries = [];
+        v.tools.clear();
+        for (const e of d.log ?? []) {
+            if (e.kind === 'tool') {
+                const cid = e.callId ?? '';
+                const t: ToolCard = {
+                    callId: cid, name: e.name ?? '', args: e.args ?? '',
+                    status: e.status || 'done', result: e.result ?? '', open: false,
+                };
+                v.tools.set(cid, t);
+                v.entries.push({ id: nextMsgId(), kind: 'tool', tool: t });
+            } else {
+                v.entries.push({
+                    id: nextMsgId(),
+                    kind: e.kind === 'user' ? 'user' : e.kind === 'note' ? 'note' : 'assistant',
+                    content: e.content,
+                });
+            }
+        }
+        const s = state.chatList.find(c => c.id === id);
+        if (s) {
+            v.busy = !!s.busy;
+            v.usage = s.usage ?? null;
+        }
+        if (state.activeChatId === id) notify();
+    } catch (err) {
+        toastError(err);
+    }
+}
+
+export async function selectChat(id: string) {
+    state.activeChatId = id;
+    state.chatListOpen = false;
+    notify();
+    const v = state.chats.get(id);
+    if (!v?.loaded) await loadChat(id);
+    else notify();
+}
+
+export async function refreshChatList() {
+    state.chatListLoading = true;
+    notify();
+    try {
+        state.chatList = await App.ListChats();
+    } catch (err) {
+        toastError(err);
+    }
+    state.chatListLoading = false;
+    notify();
+}
+
+export async function openChatForHost(hostId: string) {
+    let c = state.chatList
+        .filter(x => x.hostId === hostId && !x.archived)
+        .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (!c) {
+        c = await App.CreateChat(hostId);
+        state.chatList.unshift(c);
+    }
+    await selectChat(c.id);
 }
 
 export function themeSettings() {
     const s = settingsOrDefault();
-    return { themeId: s.themeId, customThemes: customThemes() };
+    return { themeId: s.themeId };
 }
 
 export function applyAll() {
@@ -130,6 +242,7 @@ export function applyAll() {
     applyTheme(resolveTheme(themeSettings()));
     document.body.classList.toggle('agent-right', s.agentSide !== 'left');
     document.body.classList.toggle('agent-left', s.agentSide === 'left');
+    document.body.classList.toggle('reduce-motion', !!s.reduceMotion);
     document.documentElement.style.setProperty('--ui-scale', String(s.uiScale || 1));
     document.documentElement.style.setProperty('--sidebar-w', (s.sidebarWidth / 16) + 'rem');
     document.documentElement.style.setProperty('--agent-w', (s.agentWidth / 16) + 'rem');
@@ -141,17 +254,6 @@ export function applyAll() {
     if (agent) agent.classList.toggle('hidden-panel', !s.agentVisible);
     if (splitS) splitS.classList.toggle('hidden', !s.sidebarVisible);
     if (splitA) splitA.classList.toggle('hidden', !s.agentVisible);
-    if (s.customCss) {
-        let el = document.getElementById('custom-css');
-        if (!el) {
-            el = document.createElement('style');
-            el.id = 'custom-css';
-            document.head.appendChild(el);
-        }
-        el.textContent = s.customCss;
-    } else {
-        document.getElementById('custom-css')?.remove();
-    }
     state.tabs.forEach(t => applyTermOptions(t));
     void ensureTermFont().then(() => {
         state.tabs.forEach(t => {
@@ -231,14 +333,14 @@ function wireEvents() {
         App.ScreenReply(requestId, out.join('\n')).catch(toastError);
     });
     EventsOn('session:closed', (id: string, reason: string, detail?: string) => {
+        state.sessions = state.sessions.filter(s => s.id !== id);
         const tab = tabBySession(id);
         if (tab) {
             tab.connected = false;
             tab.closedReason = reason || 'Disconnected';
             tab.closedDetail = detail || '';
-            state.sessions = state.sessions.filter(s => s.id !== id);
-            notify();
         }
+        notify();
     });
     EventsOn('session:agent', (id: string, active: boolean) => {
         const tab = tabBySession(id);
@@ -255,28 +357,65 @@ function wireEvents() {
     EventsOn('ui:focus', (id: string) => {
         activateTab(id);
     });
-    EventsOn('agent:message', (m: { role: string; content: string }) => {
-        state.agentMessages.push({ id: nextMsgId(), kind: m.role === 'user' ? 'user' : 'assistant', role: m.role, content: m.content });
-        notify();
-    });
-    EventsOn('agent:tool', (t: ToolCard) => {
-        const existing = state.agentTools.get(t.callId);
-        const merged: ToolCard = { ...(existing ?? { callId: t.callId, name: t.name, args: t.args, result: '', open: false }), ...t };
-        state.agentTools.set(t.callId, merged);
-        if (existing) {
-            const idx = state.agentMessages.findIndex(m => m.tool?.callId === t.callId);
-            if (idx >= 0) state.agentMessages[idx].tool = merged;
-        } else {
-            state.agentMessages.push({ id: nextMsgId(), kind: 'tool', tool: merged });
+    EventsOn('chat:updated', (s: main.ChatSummary) => {
+        const idx = state.chatList.findIndex(c => c.id === s.id);
+        if (idx >= 0) state.chatList[idx] = s;
+        else state.chatList.unshift(s);
+        state.chatList.sort((a, b) => b.updatedAt - a.updatedAt);
+        const v = state.chats.get(s.id);
+        if (v) {
+            v.busy = !!s.busy;
+            v.usage = s.usage ?? v.usage;
         }
         notify();
     });
-    EventsOn('agent:busy', (busy: boolean) => {
-        state.agentBusy = !!busy;
+    EventsOn('chat:deleted', (id: string) => {
+        state.chatList = state.chatList.filter(c => c.id !== id);
+        state.chats.delete(id);
+        if (state.activeChatId === id) {
+            state.activeChatId = state.chatList.find(c => !c.archived)?.id ?? '';
+            if (state.activeChatId) void loadChat(state.activeChatId);
+        }
         notify();
     });
-    EventsOn('agent:error', (msg: string) => {
-        state.agentMessages.push({ id: nextMsgId(), kind: 'note', content: msg });
+    EventsOn('agent:message', (chatId: string, e: main.ChatLogEntry) => {
+        const v = chatView(chatId);
+        v.entries.push({
+            id: nextMsgId(),
+            kind: e.kind === 'user' ? 'user' : e.kind === 'note' ? 'note' : 'assistant',
+            content: e.content,
+        });
+        notify();
+    });
+    EventsOn('agent:tool', (chatId: string, e: main.ChatLogEntry) => {
+        const v = chatView(chatId);
+        const cid = e.callId ?? '';
+        let t = v.tools.get(cid);
+        if (!t) {
+            t = { callId: cid, name: e.name ?? '', args: e.args ?? '', status: '', result: '', open: false };
+            v.tools.set(cid, t);
+            v.entries.push({ id: nextMsgId(), kind: 'tool', tool: t });
+        }
+        if (e.name) t.name = e.name;
+        if (e.args !== undefined) t.args = e.args;
+        if (e.status) t.status = e.status;
+        if (e.result !== undefined) t.result = e.result;
+        notify();
+    });
+    EventsOn('agent:busy', (chatId: string, busy: boolean) => {
+        chatView(chatId).busy = !!busy;
+        notify();
+    });
+    EventsOn('agent:error', (chatId: string, msg: string) => {
+        chatView(chatId).entries.push({ id: nextMsgId(), kind: 'note', content: msg });
+        notify();
+    });
+    EventsOn('agent:usage', (chatId: string, u: main.ChatUsage) => {
+        chatView(chatId).usage = u;
+        notify();
+    });
+    EventsOn('agent:thinking', (chatId: string, on: boolean) => {
+        chatView(chatId).thinking = !!on;
         notify();
     });
 }
@@ -296,7 +435,7 @@ export function writeTermData(tab: Tab, b64: string) {
 const qcTargets = new Map<string, string>();
 
 export function upsertSessionTab(info: main.SessionInfo) {
-    const reuse = state.tabs.find(t => t.reconnecting &&
+    const reuse = state.tabs.find(t => (t.reconnecting || t.connecting) &&
         ((t.hostId && t.hostId === info.hostId) ||
          (!t.hostId && t.qcTarget && t.user === info.user && t.address === info.address))) ?? tabBySession(info.id);
     let tab = reuse;
@@ -311,6 +450,7 @@ export function upsertSessionTab(info: main.SessionInfo) {
             address: info.address || '',
             qcTarget: qcTargets.get(info.id) ?? '',
             reconnecting: false,
+            connecting: false,
             connected: true,
             agentActive: false,
             closedReason: '',
@@ -332,6 +472,7 @@ export function upsertSessionTab(info: main.SessionInfo) {
         tab.address = info.address || tab.address;
         if (!tab.qcTarget) tab.qcTarget = qcTargets.get(info.id) ?? '';
         tab.reconnecting = false;
+        tab.connecting = false;
         tab.connected = true;
         tab.closedReason = '';
         tab.closedDetail = '';
@@ -427,19 +568,59 @@ async function quickConnectInner(target: string, password: string, dims: { cols:
     }
 }
 
+export function addPendingTab(title: string, pending: { hostId?: string; target?: string }, connecting: boolean): Tab {
+    const key = 'pend-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    const tab: Tab = {
+        key,
+        sessionId: '',
+        title,
+        hostId: pending.hostId ?? '',
+        color: '',
+        user: '',
+        address: pending.target ?? '',
+        qcTarget: pending.target ?? '',
+        reconnecting: false,
+        connecting,
+        connected: false,
+        agentActive: false,
+        closedReason: '',
+        closedDetail: '',
+        error: '',
+        pending,
+        term: null,
+        fit: null,
+        search: null,
+        termEl: null,
+    };
+    state.tabs.push(tab);
+    state.activeKey = key;
+    notify();
+    return tab;
+}
+
 export async function connectHost(host: main.Host) {
     const dims = currentDims();
+    const tab = addPendingTab(host.name || host.user + '@' + host.address, { hostId: host.id }, true);
     const res = await connectHostInner(host, dims);
     if ('error' in res) {
-        addErrorTab(host.name || host.user + '@' + host.address, res.error, { hostId: host.id });
+        tab.connecting = false;
+        tab.error = res.error;
+        tab.pending = { hostId: host.id };
+        notify();
     }
 }
 
 export async function quickConnect(target: string, password = '') {
     const dims = currentDims();
+    const tab = addPendingTab(target, { target }, true);
     const res = await quickConnectInner(target, password, dims);
     if ('id' in res) qcTargets.set(res.id, target);
-    else addErrorTab(target, res.error, { target });
+    else {
+        tab.connecting = false;
+        tab.error = res.error;
+        tab.pending = { target };
+        notify();
+    }
 }
 
 export async function reconnectTab(tab: Tab) {
@@ -478,29 +659,9 @@ function currentDims(): { cols: number; rows: number } {
 }
 
 export function addErrorTab(title: string, error: string, pending: { hostId?: string; target?: string }) {
-    const key = 'err-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-    state.tabs.push({
-        key,
-        sessionId: '',
-        title,
-        hostId: pending.hostId ?? '',
-        color: '',
-        user: '',
-        address: pending.target ?? '',
-        qcTarget: pending.target ?? '',
-        reconnecting: false,
-        connected: false,
-        agentActive: false,
-        closedReason: '',
-        closedDetail: '',
-        error,
-        pending,
-        term: null,
-        fit: null,
-        search: null,
-        termEl: null,
-    });
-    state.activeKey = key;
+    addPendingTab(title, pending, false);
+    const tab = state.tabs[state.tabs.length - 1];
+    tab.error = error;
     notify();
 }
 
@@ -522,7 +683,10 @@ export function closeTab(key: string) {
     const tab = state.tabs[idx];
     state.tabs.splice(idx, 1);
     tabCleanups.forEach(fn => fn(tab));
-    if (tab.sessionId) App.Disconnect(tab.sessionId).catch(toastError);
+    if (tab.sessionId) {
+        state.sessions = state.sessions.filter(s => s.id !== tab.sessionId);
+        App.Disconnect(tab.sessionId).catch(err => toastError(err));
+    }
     if (state.activeKey === key) {
         const next = state.tabs[Math.min(idx, state.tabs.length - 1)];
         state.activeKey = next ? next.key : '';

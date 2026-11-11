@@ -4,23 +4,33 @@ import {main} from '../models';
 
 export function AgentApprove(arg1:string,arg2:boolean):Promise<void>;
 
-export function AgentReset():Promise<void>;
+export function AgentSend(arg1:string,arg2:string,arg3:string):Promise<void>;
 
-export function AgentSend(arg1:string,arg2:string):Promise<void>;
+export function AgentStop(arg1:string):Promise<void>;
 
-export function AgentStop():Promise<void>;
+export function ArchiveChat(arg1:string,arg2:boolean):Promise<main.ChatSummary>;
+
+export function AttachChat(arg1:string,arg2:string):Promise<main.ChatSummary>;
 
 export function Connect(arg1:string,arg2:number,arg3:number):Promise<string>;
 
 export function ConnectWithSecret(arg1:string,arg2:string,arg3:boolean,arg4:number,arg5:number):Promise<string>;
 
+export function CreateChat(arg1:string):Promise<main.ChatSummary>;
+
+export function DeleteChat(arg1:string):Promise<void>;
+
 export function DeleteHost(arg1:string):Promise<void>;
 
 export function Disconnect(arg1:string):Promise<void>;
 
+export function GetChat(arg1:string):Promise<main.ChatDetail>;
+
 export function GetSettings():Promise<main.Settings>;
 
 export function ImportSSHConfig():Promise<Array<main.Host>>;
+
+export function ListChats():Promise<Array<main.ChatSummary>>;
 
 export function ListHosts():Promise<Array<main.Host>>;
 
@@ -30,6 +40,8 @@ export function ListSessions():Promise<Array<main.SessionInfo>>;
 
 export function QuickConnect(arg1:string,arg2:string,arg3:number,arg4:number):Promise<string>;
 
+export function RenameChat(arg1:string,arg2:string):Promise<main.ChatSummary>;
+
 export function Resize(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function SaveHost(arg1:main.Host):Promise<main.Host>;
@@ -37,5 +49,7 @@ export function SaveHost(arg1:main.Host):Promise<main.Host>;
 export function SaveSettings(arg1:main.Settings):Promise<void>;
 
 export function ScreenReply(arg1:string,arg2:string):Promise<void>;
+
+export function SetChatGroup(arg1:string,arg2:string):Promise<main.ChatSummary>;
 
 export function Write(arg1:string,arg2:string):Promise<void>;

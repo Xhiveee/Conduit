@@ -28,6 +28,12 @@ export function syncTerminals() {
     for (const tab of state.tabs) {
         if (!tab.termEl) {
             void createTermHost(tab);
+        } else if (!tab.term && tab.error) {
+            const frame = tab.termEl.querySelector('.term-frame');
+            if (frame && !frame.querySelector('.term-error')) renderError(tab);
+        } else if (!tab.term && !tab.termRequested && tab.sessionId && !tab.error) {
+            const inner = tab.termEl.querySelector('.term-inner') as HTMLElement | null;
+            if (inner) void attachTerm(tab, inner);
         }
         tab.termEl!.classList.toggle('active', tab.key === state.activeKey);
         tab.termEl!.querySelector('.term-frame')?.classList.toggle('agent-active', tab.agentActive);
@@ -62,8 +68,39 @@ async function createTermHost(tab: Tab) {
         renderError(tab);
         return;
     }
+    if (tab.connecting && !tab.sessionId) {
+        renderConnecting(tab);
+        return;
+    }
     if (!tab.sessionId) return;
+    void attachTerm(tab, inner);
+}
 
+function renderConnecting(tab: Tab) {
+    const frame = tab.termEl!.querySelector('.term-frame')!;
+    frame.querySelector('.term-connect')?.remove();
+    const box = document.createElement('div');
+    box.className = 'term-connect';
+    const prog = document.createElement('div');
+    prog.className = 'tc-progress';
+    const name = document.createElement('div');
+    name.className = 'tc-name';
+    name.textContent = tab.title;
+    const sub = document.createElement('div');
+    sub.className = 'tc-sub';
+    sub.appendChild(icon('loader', 13));
+    const sp = document.createElement('span');
+    sp.textContent = 'Connecting…';
+    sub.appendChild(sp);
+    box.append(prog, name, sub);
+    frame.appendChild(box);
+}
+
+async function attachTerm(tab: Tab, inner: HTMLElement) {
+    if (tab.term || tab.termRequested || tab.error) return;
+    tab.termRequested = true;
+    const frame = tab.termEl?.querySelector('.term-frame');
+    frame?.querySelector('.term-connect')?.remove();
     await ensureTermFont().catch(toastError);
     const s = settingsOrDefault();
     const term = new Terminal({
@@ -130,7 +167,7 @@ function syncDiscBar(tab: Tab) {
     const frame = tab.termEl?.querySelector('.term-frame');
     if (!frame) return;
     let bar = frame.querySelector('.disc-bar') as HTMLElement | null;
-    const show = !!tab.sessionId && !tab.connected && !tab.error;
+    const show = !!tab.sessionId && ((!tab.connected && !tab.error) || tab.reconnecting);
     frame.classList.toggle('has-disc', show);
     if (!show) {
         bar?.remove();
@@ -148,10 +185,13 @@ function syncDiscBar(tab: Tab) {
         bar.append(reason, btn);
         frame.appendChild(bar);
     }
+    bar.classList.toggle('reconnecting', !!tab.reconnecting);
     const reason = bar.querySelector('.disc-reason') as HTMLElement;
-    reason.textContent = tab.closedReason || 'Disconnected';
-    if (tab.closedDetail) reason.dataset.tip = tab.closedDetail;
+    reason.textContent = tab.reconnecting ? 'Reconnecting…' : (tab.closedReason || 'Disconnected');
+    if (tab.closedDetail && !tab.reconnecting) reason.dataset.tip = tab.closedDetail;
     else delete reason.dataset.tip;
+    const btn = bar.querySelector('.btn') as HTMLElement | null;
+    if (btn) btn.style.display = tab.reconnecting ? 'none' : '';
 }
 
 function hexToRgb(hex: string): [number, number, number] {

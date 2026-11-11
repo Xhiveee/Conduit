@@ -23,9 +23,10 @@ export function openDialog(modal: HTMLElement, opts?: { overlayClose?: boolean }
         if (i < 0) return;
         stack.splice(i, 1);
         releaseLayer();
-        overlay.remove();
+        overlay.classList.add('closing');
+        window.setTimeout(() => overlay.remove(), 140);
         const pf = entry.prevFocus as HTMLElement | null;
-        pf?.focus?.();
+        window.setTimeout(() => pf?.focus?.(), 140);
     };
     entry.close = close;
     const releaseLayer = pushLayer(() => close());

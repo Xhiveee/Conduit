@@ -59,6 +59,7 @@ function setupSplitters() {
         let currentW = 0;
         split.addEventListener('mousedown', ev => {
             dragging = true;
+            document.body.classList.add('no-anim');
             startX = ev.clientX;
             startW = target.getBoundingClientRect().width / uiScale();
             split.classList.add('dragging');
@@ -76,6 +77,7 @@ function setupSplitters() {
         window.addEventListener('mouseup', () => {
             if (!dragging) return;
             dragging = false;
+            document.body.classList.remove('no-anim');
             split.classList.remove('dragging');
             if (currentW > 0) {
                 const s = settingsOrDefault();
