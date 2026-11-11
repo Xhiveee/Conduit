@@ -154,6 +154,13 @@ export function chatSummary(id: string): main.ChatSummary | undefined {
     return state.chatList.find(c => c.id === id);
 }
 
+export function upsertChatSummary(s: main.ChatSummary) {
+    const idx = state.chatList.findIndex(c => c.id === s.id);
+    if (idx >= 0) state.chatList[idx] = s;
+    else state.chatList.push(s);
+    state.chatList.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
 export function chatTargetSession(chatId: string): string {
     const sum = chatSummary(chatId);
     if (sum?.hostId) {
@@ -227,7 +234,7 @@ export async function openChatForHost(hostId: string) {
         .sort((a, b) => b.updatedAt - a.updatedAt)[0];
     if (!c) {
         c = await App.CreateChat(hostId);
-        state.chatList.unshift(c);
+        upsertChatSummary(c);
     }
     await selectChat(c.id);
 }
@@ -358,10 +365,7 @@ function wireEvents() {
         activateTab(id);
     });
     EventsOn('chat:updated', (s: main.ChatSummary) => {
-        const idx = state.chatList.findIndex(c => c.id === s.id);
-        if (idx >= 0) state.chatList[idx] = s;
-        else state.chatList.unshift(s);
-        state.chatList.sort((a, b) => b.updatedAt - a.updatedAt);
+        upsertChatSummary(s);
         const v = state.chats.get(s.id);
         if (v) {
             v.busy = !!s.busy;

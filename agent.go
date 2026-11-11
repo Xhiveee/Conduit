@@ -90,7 +90,11 @@ func (a *Agent) send(chatID, text, activeSessionID string) error {
 		if len(t) > 60 {
 			t = t[:60]
 		}
-		cs.setTitleIfEmpty(chatID, string(t))
+		if title := string(t); title != "" {
+			if err := cs.setTitleIfEmpty(chatID, title); err != nil {
+				a.app.emit("agent:error", chatID, err.Error())
+			}
+		}
 	}
 	a.app.emit("agent:message", chatID, entry)
 	cs.setBusy(chatID, true)

@@ -321,12 +321,21 @@ func (cs *ChatStore) addUsage(chatID string, u ChatUsage) {
 	}
 }
 
-func (cs *ChatStore) setTitleIfEmpty(chatID, title string) {
+func (cs *ChatStore) setTitleIfEmpty(chatID, title string) error {
 	cs.mu.Lock()
-	defer cs.mu.Unlock()
-	if c, ok := cs.chats[chatID]; ok && c.Title == "" {
-		c.Title = title
-		c.UpdatedAt = nowMs()
-		_ = cs.persist(c)
+	c, ok := cs.chats[chatID]
+	if !ok || c.Title != "" {
+		cs.mu.Unlock()
+		return nil
 	}
+	c.Title = title
+	c.UpdatedAt = nowMs()
+	s := c.ChatSummary
+	err := cs.persist(c)
+	cs.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	cs.emitEvent("chat:updated", s)
+	return nil
 }

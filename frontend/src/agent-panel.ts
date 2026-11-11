@@ -17,7 +17,7 @@ import plaintext from 'highlight.js/lib/languages/plaintext';
 import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 import * as App from '../wailsjs/go/main/App';
 import {
-    state, onUI, notify, chatTargetSession, activeChat, chatSummary,
+    state, onUI, notify, chatTargetSession, activeChat, chatSummary, upsertChatSummary,
     selectChat, settingsOrDefault, type AgentMsg, type ToolCard, type ChatView,
 } from './state';
 import { icon } from './icons';
@@ -453,8 +453,7 @@ function buildEmpty(): HTMLElement {
 async function createChat(hostId = '') {
     try {
         const s = await App.CreateChat(hostId);
-        state.chatList.unshift(s);
-        state.chatList.sort((a, b) => b.updatedAt - a.updatedAt);
+        upsertChatSummary(s);
         await selectChat(s.id);
     } catch (err) {
         toastError(err);
@@ -623,8 +622,7 @@ function sendAgentMessage(text: string) {
         void (async () => {
             try {
                 const s = await App.CreateChat('');
-                state.chatList.unshift(s);
-                state.chatList.sort((a, b) => b.updatedAt - a.updatedAt);
+                upsertChatSummary(s);
                 state.activeChatId = s.id;
                 chatId = s.id;
                 notify();

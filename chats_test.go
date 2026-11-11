@@ -122,6 +122,51 @@ func TestChatStoreCorrupted(t *testing.T) {
 	}
 }
 
+func TestChatStoreTitleEmit(t *testing.T) {
+	t.Setenv("CONDUIT_DATA_DIR", t.TempDir())
+	cs := newTestChatStore(t)
+	var mu sync.Mutex
+	var events []recordedEvent
+	cs.setEmit(func(name string, args ...interface{}) {
+		mu.Lock()
+		events = append(events, recordedEvent{name: name, args: args})
+		mu.Unlock()
+	})
+	s, err := cs.Create("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.setTitleIfEmpty(s.ID, "first line title"); err != nil {
+		t.Fatal(err)
+	}
+	var updated []ChatSummary
+	for _, e := range events {
+		if e.name == "chat:updated" && len(e.args) > 0 {
+			if sum, ok := e.args[0].(ChatSummary); ok {
+				updated = append(updated, sum)
+			}
+		}
+	}
+	if len(updated) != 2 {
+		t.Fatalf("expected create + title events, got %d", len(updated))
+	}
+	if updated[1].Title != "first line title" || updated[1].ID != s.ID {
+		t.Fatalf("bad title event: %+v", updated[1])
+	}
+	if err := cs.setTitleIfEmpty(s.ID, "second title"); err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, e := range events {
+		if e.name == "chat:updated" {
+			count++
+		}
+	}
+	if count != 2 {
+		t.Fatalf("title re-emit on non-empty title: %d events", count)
+	}
+}
+
 func TestChatStoreDetachHost(t *testing.T) {
 	t.Setenv("CONDUIT_DATA_DIR", t.TempDir())
 	cs := newTestChatStore(t)
