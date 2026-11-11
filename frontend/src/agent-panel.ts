@@ -24,7 +24,7 @@ import { icon } from './icons';
 import { toastError } from './toast';
 import type { main } from '../wailsjs/go/models';
 import { toggleSettings } from './settings';
-import { contextMenuAt, showMenuAt, confirmDialog, promptDialog, type MenuEntry } from './ui';
+import { contextMenuAt, showMenuAt, confirmDialog, promptDialog, uiSwitch, type MenuEntry } from './ui';
 
 hljs.registerLanguage('bash', bash);
 hljs.registerLanguage('shell', bash);
@@ -122,6 +122,7 @@ let listEl: HTMLElement | null = null;
 let pillEl: HTMLButtonElement | null = null;
 let usageEl: HTMLElement | null = null;
 let sendBtn: HTMLButtonElement | null = null;
+let headStopBtn: HTMLButtonElement | null = null;
 let emptyEl: HTMLElement | null = null;
 let chatBtn: HTMLButtonElement | null = null;
 const msgEls = new Map<number, { el: HTMLElement; sig: string }>();
@@ -151,7 +152,7 @@ function buildChrome(el: HTMLElement) {
     chipEl = document.createElement('button');
     chipEl.className = 'ag-chip';
     chipEl.type = 'button';
-    titleWrap.append(titleEl, chipEl);
+    titleWrap.append(titleEl);
     modelEl = document.createElement('button');
     modelEl.className = 'ag-model';
     modelEl.type = 'button';
@@ -179,6 +180,7 @@ function buildChrome(el: HTMLElement) {
     stopBtn.dataset.tipKeys = 'Esc';
     stopBtn.appendChild(icon('square', 13));
     stopBtn.onclick = () => { const id = state.activeChatId; if (id) void App.AgentStop(id); };
+    headStopBtn = stopBtn;
     head.append(titleWrap, modelEl, chatBtn, newBtn, moreBtn, stopBtn);
     el.appendChild(head);
 
@@ -188,7 +190,7 @@ function buildChrome(el: HTMLElement) {
     tlabel.className = 'ag-target-label';
     tlabel.textContent = 'Target: ';
     targetVal = document.createElement('b');
-    target.append(tlabel, targetVal);
+    target.append(tlabel, chipEl, targetVal);
     el.appendChild(target);
 
     const body = document.createElement('div');
@@ -278,6 +280,7 @@ function updateChrome() {
     const targetTab = state.tabs.find(t => t.sessionId === tid);
     if (targetVal) targetVal.textContent = targetTab ? targetTab.title : 'none';
     if (chatBtn) chatBtn.classList.toggle('active', state.chatListOpen);
+    if (headStopBtn) headStopBtn.style.display = chat?.busy ? '' : 'none';
 
     if (sendBtn) {
         sendBtn.innerHTML = '';
@@ -887,15 +890,13 @@ function syncChatList() {
 
     const hostTab = [...state.tabs].reverse().find(t => t.hostId && t.connected);
     const hostId = hostTab?.hostId ?? '';
-    const filterRow = document.createElement('label');
+    const filtering = clFilter && !!hostId;
+    const filterRow = document.createElement('div');
     filterRow.className = 'cl-filter';
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.checked = clFilter && !!hostId;
-    chk.onchange = () => { clFilter = chk.checked; syncChatList(); };
     const fs = document.createElement('span');
     fs.textContent = 'This server only';
-    filterRow.append(chk, fs);
+    const sw = uiSwitch(filtering, v => { clFilter = v; syncChatList(); });
+    filterRow.append(fs, sw);
     listEl.appendChild(filterRow);
 
     const scroll = document.createElement('div');
@@ -908,8 +909,8 @@ function syncChatList() {
         return h ? (h.name || h.user + '@' + h.address) : '';
     };
     let chats = state.chatList.filter(c => !c.archived);
-    if (chk.checked && hostId) chats = chats.filter(c => c.hostId === hostId);
-    if (q) chats = chats.filter(c => (c.title || 'untitled').toLowerCase().includes(q) || (c.group || '').toLowerCase().includes(q));
+    if (filtering) chats = chats.filter(c => c.hostId === hostId);
+    if (q) chats = chats.filter(c => (c.title || 'new chat').toLowerCase().includes(q) || (c.group || '').toLowerCase().includes(q));
 
     const groups = new Map<string, typeof chats>();
     for (const c of chats) {
@@ -952,7 +953,7 @@ function syncChatList() {
     renderSection('', groups.get('') ?? [], false);
     for (const g of groupNames) renderSection(g, groups.get(g)!);
 
-    const archived = state.chatList.filter(c => c.archived && (!chk.checked || !hostId || c.hostId === hostId) && (!q || (c.title || '').toLowerCase().includes(q)));
+    const archived = state.chatList.filter(c => c.archived && (!filtering || c.hostId === hostId) && (!q || (c.title || '').toLowerCase().includes(q)));
     if (archived.length) {
         const sec = document.createElement('div');
         sec.className = 'cl-group';
@@ -1017,7 +1018,7 @@ function chatRow(c: main.ChatSummary, hostName: (id: string) => string): HTMLEle
     main.className = 'cl-row-main';
     const title = document.createElement('div');
     title.className = 'cl-row-title';
-    title.textContent = c.title || 'Untitled chat';
+    title.textContent = c.title || 'New chat';
     const sub = document.createElement('div');
     sub.className = 'cl-row-sub';
     const parts: string[] = [];
