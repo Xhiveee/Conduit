@@ -982,7 +982,7 @@ body.agent-left #center { order: 4; }
 .ag-input textarea:focus { border-color: var(--border-strong); }
 .ag-input-row {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 0.5rem;
 }
 .ag-hint {
