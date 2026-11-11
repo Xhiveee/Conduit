@@ -307,13 +307,9 @@ function agentTargetFallback(): string {
 function onMsgsScroll() {
     if (!msgsEl) return;
     const dist = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight;
-    if (dist < 80) {
-        pinned = true;
-        newCount = 0;
-        updatePill();
-    } else if (!pinned) {
-        updatePill();
-    }
+    pinned = dist < 80;
+    if (pinned) newCount = 0;
+    updatePill();
     updateFades();
 }
 
@@ -357,7 +353,6 @@ function syncMessages() {
     }
     const entries = chat?.entries ?? [];
     const thinking = !!chat?.thinking;
-    const busy = !!chat?.busy;
     const ids = new Set(entries.map(m => m.id));
     for (const [id, rec] of msgEls) {
         if (!ids.has(id)) {
@@ -390,8 +385,11 @@ function syncMessages() {
         emptyEl.remove();
         emptyEl = null;
     }
-    if (added && !pinned) newCount += 1;
-    if (pinned || added || busy) {
+    if (added && !pinned) {
+        newCount += 1;
+        updatePill();
+    }
+    if (pinned) {
         requestAnimationFrame(() => { if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight; });
     }
     updateFades();
