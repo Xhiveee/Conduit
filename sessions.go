@@ -298,10 +298,29 @@ func (s *Session) subscribe() (<-chan []byte, func()) {
 func (s *Session) wait() {
 	err := s.sshSession.Wait()
 	if err != nil {
-		s.finish("connection closed: " + err.Error())
+		human, raw := classifyCloseError(err)
+		s.finish(human, raw)
 	} else {
-		s.finish("session exited")
+		s.finish("Session ended", "")
 	}
+}
+
+func classifyCloseError(err error) (human, raw string) {
+	raw = err.Error()
+	var exitErr *ssh.ExitError
+	if errors.As(err, &exitErr) {
+		return fmt.Sprintf("Shell exited with code %d", exitErr.ExitStatus()), raw
+	}
+	var missing *ssh.ExitMissingError
+	if errors.As(err, &missing) {
+		return "Session ended", raw
+	}
+	var opErr *net.OpError
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.As(err, &opErr) ||
+		strings.Contains(raw, "connection reset") || strings.Contains(raw, "broken pipe") {
+		return "Connection lost", raw
+	}
+	return "Connection lost", raw
 }
 
 func (s *Session) keepalive() {
@@ -320,13 +339,13 @@ func (s *Session) keepalive() {
 	}
 }
 
-func (s *Session) finish(reason string) {
+func (s *Session) finish(human, raw string) {
 	s.closeOnce.Do(func() {
 		close(s.closed)
 		s.mgr.mu.Lock()
 		delete(s.mgr.byID, s.info.ID)
 		s.mgr.mu.Unlock()
-		s.mgr.emitEvent("session:closed", s.info.ID, reason)
+		s.mgr.emitEvent("session:closed", s.info.ID, human, raw)
 		s.client.Close()
 		s.sshSession.Close()
 		close(s.done)
@@ -346,7 +365,7 @@ func (s *Session) Resize(cols, rows int) error {
 }
 
 func (s *Session) Disconnect() {
-	s.finish("disconnected by user")
+	s.finish("Disconnected", "")
 }
 
 func (m *SessionManager) Write(id, data string) error {
@@ -425,7 +444,7 @@ func classifyAuthError(h Host, err error) string {
 	}
 	msg := strings.ToLower(err.Error())
 	if h.AuthMethod == "key" {
-		if strings.Contains(msg, "unable to authenticate") || strings.Contains(msg, "passphrase") || strings.Contains(msg, "decrypt") {
+		if strings.Contains(msg, "incorrect passphrase") || strings.Contains(msg, "decrypt") {
 			return "auth_required:passphrase"
 		}
 		return ""
@@ -439,6 +458,13 @@ func classifyAuthError(h Host, err error) string {
 func authError(h Host, err error) error {
 	if kind := classifyAuthError(h, err); kind != "" {
 		return fmt.Errorf("%s: %w", kind, err)
+	}
+	if h.AuthMethod == "key" && strings.Contains(strings.ToLower(err.Error()), "unable to authenticate") {
+		name := h.Name
+		if h.KeyPath != "" {
+			name = filepath.Base(h.KeyPath)
+		}
+		return fmt.Errorf("server rejected key %s: %w", name, err)
 	}
 	return err
 }
