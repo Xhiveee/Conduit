@@ -86,6 +86,7 @@ func NewChatStore() (*ChatStore, error) {
 		if c.ID == "" {
 			c.ID = strings.TrimSuffix(e.Name(), ".json")
 		}
+		c.Busy = false
 		cs.chats[c.ID] = &c
 	}
 	return cs, nil

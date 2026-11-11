@@ -127,7 +127,11 @@ func (a *App) GetChat(id string) (ChatDetail, error) {
 	if !ok {
 		return ChatDetail{}, fmt.Errorf("chat not found")
 	}
-	return ChatDetail{ChatSummary: c.ChatSummary, Log: c.Log}, nil
+	log := c.Log
+	if log == nil {
+		log = []ChatLogEntry{}
+	}
+	return ChatDetail{ChatSummary: c.ChatSummary, Log: log}, nil
 }
 
 func (a *App) CreateChat(hostID string) (ChatSummary, error) {

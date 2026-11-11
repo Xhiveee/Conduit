@@ -59,7 +59,7 @@ func keyInfoFromSigner(path string, signer ssh.Signer) KeyInfo {
 }
 
 func ListKeys() ([]KeyInfo, error) {
-	var out []KeyInfo
+	out := make([]KeyInfo, 0)
 	dir := sshDir()
 	if dir != "" {
 		entries, err := os.ReadDir(dir)

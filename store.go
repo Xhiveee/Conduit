@@ -316,7 +316,7 @@ func (s *Store) ImportSSHConfig(r io.Reader, homeDir string) ([]Host, error) {
 	parsed := parseSSHConfig(r, homeDir)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var added []Host
+	added := make([]Host, 0, len(parsed))
 	for _, h := range parsed {
 		dup := false
 		for _, e := range s.data.Hosts {

@@ -84,6 +84,28 @@ func TestChatStorePersistence(t *testing.T) {
 	}
 }
 
+func TestChatStoreBusyResetOnLoad(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CONDUIT_DATA_DIR", dir)
+	cs := newTestChatStore(t)
+	s, err := cs.Create("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs.setBusy(s.ID, true)
+	if err := cs.persist(cs.chats[s.ID]); err != nil {
+		t.Fatal(err)
+	}
+	cs2, err := NewChatStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := cs2.Get(s.ID)
+	if !ok || got.Busy {
+		t.Fatalf("busy not reset on load: %+v", got)
+	}
+}
+
 func TestChatStoreCorrupted(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CONDUIT_DATA_DIR", dir)
