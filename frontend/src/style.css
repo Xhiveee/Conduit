@@ -754,7 +754,6 @@ body.agent-left #center { order: 4; }
 }
 .ag-head .ag-btn:hover { background: var(--surface-3); color: var(--text); }
 .ag-head .ag-btn svg { width: 0.9375rem; height: 0.9375rem; stroke-width: 1.5; }
-.ag-head .ag-btn.danger:hover { color: var(--danger); }
 
 .ag-target {
     display: flex;
@@ -2101,8 +2100,6 @@ button:active:not(:disabled) { transform: scale(.98); }
     color: var(--text); font-size: 0.8125rem; padding: 0.375rem 0.625rem;
 }
 .cl-search:focus { border-color: var(--border-strong); outline: none; }
-.cl-new { flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.25rem; }
-.cl-new svg { width: 0.8125rem; height: 0.8125rem; }
 .cl-filter {
     display: flex; align-items: center; gap: 0.4rem;
     padding: 0.25rem 0.875rem 0.5rem; font-size: 0.75rem; color: var(--text-2);
