@@ -81,18 +81,8 @@ md.renderer.rules.link_close = (tokens, idx, options, env, self) => {
     if (stack?.pop()) return '';
     return self.renderToken(tokens, idx, options);
 };
-const tableOpen = md.renderer.rules.table_open;
-md.renderer.rules.table_open = (tokens, idx, options, env, self) => {
-    let out = '<div class="md-table-wrap">';
-    if (tableOpen) out += tableOpen(tokens, idx, options, env, self);
-    return out;
-};
-const tableClose = md.renderer.rules.table_close;
-md.renderer.rules.table_close = (tokens, idx, options, env, self) => {
-    let out = '';
-    if (tableClose) out += tableClose(tokens, idx, options, env, self);
-    return out + '</div>';
-};
+md.renderer.rules.table_open = () => '<div class="md-table-wrap"><table>\n';
+md.renderer.rules.table_close = () => '</table>\n</div>';
 
 const root = () => document.getElementById('agent')!;
 let inputEl: HTMLTextAreaElement | null = null;

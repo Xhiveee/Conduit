@@ -301,7 +301,7 @@ async function deleteHost(h: (typeof state.hosts)[number]) {
 
 export async function importSSHConfig() {
     try {
-        const added = await App.ImportSSHConfig();
+        const added = (await App.ImportSSHConfig()) ?? [];
         await refreshHosts();
         if (added.length === 0) {
             toastInfo('No new hosts found in ~/.ssh/config');
