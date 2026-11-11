@@ -15,8 +15,8 @@ Portable Windows SSH client (Termius-like) with a built-in AI agent. Go 1.27 + W
 
 ## Commands
 
-- Dev: `./.tools/bin/wails.exe dev` (frontend dev server + rebuild on change)
-- Build: `./.tools/bin/wails.exe build -clean -o Conduit.exe` → `build/bin/Conduit.exe`
+- Dev: `CONDUIT_DATA_DIR="$(pwd -W)/.clean/devdata" ./.tools/bin/wails.exe dev` (always set `CONDUIT_DATA_DIR` inside `.clean/` for dev/e2e so real data in `build/bin/data` is never touched)
+- Build: `./.tools/bin/wails.exe build -o Conduit.exe` → `build/bin/Conduit.exe` (NEVER `-clean`: it wipes `build/bin/` including `data/` where the user's real hosts/settings/API key live — never delete or clean `build/bin/data`)
 - Go checks: `go vet ./...`, `go test ./...`
 - Frontend typecheck+build: `cd frontend && npm.cmd run build`
 - E2E (needs docker sshd, see below): `CONDUIT_E2E_HOST=127.0.0.1 CONDUIT_E2E_PORT=2222 CONDUIT_E2E_USER=test CONDUIT_E2E_PASSWORD=test go test -tags e2e ./...`
