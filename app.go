@@ -122,12 +122,12 @@ func (a *App) ListChats() []ChatSummary {
 	return a.chats.List()
 }
 
-func (a *App) GetChat(id string) (ChatSummary, []ChatLogEntry, error) {
+func (a *App) GetChat(id string) (ChatDetail, error) {
 	c, ok := a.chats.Get(id)
 	if !ok {
-		return ChatSummary{}, nil, fmt.Errorf("chat not found")
+		return ChatDetail{}, fmt.Errorf("chat not found")
 	}
-	return c.ChatSummary, c.Log, nil
+	return ChatDetail{ChatSummary: c.ChatSummary, Log: c.Log}, nil
 }
 
 func (a *App) CreateChat(hostID string) (ChatSummary, error) {

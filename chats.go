@@ -49,6 +49,11 @@ type Chat struct {
 	Messages []chatMessage  `json:"messages"`
 }
 
+type ChatDetail struct {
+	ChatSummary
+	Log []ChatLogEntry `json:"log"`
+}
+
 type ChatStore struct {
 	mu    sync.Mutex
 	dir   string

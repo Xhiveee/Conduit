@@ -306,8 +306,11 @@ func (a *Agent) execTool(ctx context.Context, chatID string, cfg AISettings, cal
 			a.updateTool(chatID, call.ID, "rejected", "user rejected")
 			return "user rejected"
 		}
+		a.updateTool(chatID, call.ID, "running", "")
+	} else {
+		toolEntry.Status = "running"
+		a.logTool(chatID, toolEntry)
 	}
-	a.updateTool(chatID, call.ID, "running", "")
 	result, err := a.dispatchTool(ctx, name, json.RawMessage(raw))
 	if err != nil {
 		a.updateTool(chatID, call.ID, "error", err.Error())

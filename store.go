@@ -60,6 +60,7 @@ type Settings struct {
 	SidebarVisible  bool       `json:"sidebarVisible"`
 	AgentVisible    bool       `json:"agentVisible"`
 	AgentSide       string     `json:"agentSide"`
+	ReduceMotion    bool       `json:"reduceMotion"`
 	AI              AISettings `json:"ai"`
 }
 
@@ -209,6 +210,9 @@ func mergeSettings(def, cur Settings, m map[string]interface{}) Settings {
 	}
 	if !has("agentSide") || out.AgentSide == "" {
 		out.AgentSide = def.AgentSide
+	}
+	if !has("reduceMotion") {
+		out.ReduceMotion = def.ReduceMotion
 	}
 	a := out.AI
 	if !hasAI("baseUrl") || a.BaseURL == "" {
