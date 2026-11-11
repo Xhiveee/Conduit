@@ -233,13 +233,13 @@ function buildChrome(el: HTMLElement) {
     });
     const row = document.createElement('div');
     row.className = 'ag-input-row';
-    usageEl = document.createElement('div');
-    usageEl.className = 'ag-usage';
     sendBtn = document.createElement('button');
     sendBtn.className = 'ag-send';
     sendBtn.type = 'button';
-    row.append(usageEl, sendBtn);
-    inputWrap.append(ta, row);
+    usageEl = document.createElement('div');
+    usageEl.className = 'ag-usage';
+    row.append(ta, sendBtn);
+    inputWrap.append(row, usageEl);
     el.appendChild(inputWrap);
 }
 
