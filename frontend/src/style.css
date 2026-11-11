@@ -2141,7 +2141,6 @@ button:active:not(:disabled) { transform: scale(.98); }
     content: ''; position: absolute; top: 0; bottom: 0; width: 25%;
     background: var(--accent); animation: indet 1.2s var(--ease) infinite;
 }
-.term-frame { position: relative; }
 
 .t-dot.conn {
     width: 0.5rem; height: 0.5rem; border-radius: 50%;
