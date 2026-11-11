@@ -8,4 +8,4 @@ export { showMenuAt, contextMenuAt, installContextMenuGuard } from './menu';
 export type { MenuEntry } from './menu';
 export { openDialog, closeTopDialog, confirmDialog, promptDialog } from './dialog';
 export { initTooltips } from './tooltip';
-export { pushLayer, escapeTop } from './layers';
+export { pushLayer, escapeTop, layerDepth } from './layers';

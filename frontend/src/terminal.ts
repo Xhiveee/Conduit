@@ -2,19 +2,22 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { SearchAddon } from '@xterm/addon-search';
 import '@xterm/xterm/css/xterm.css';
 import * as App from '../wailsjs/go/main/App';
-import { state, settingsOrDefault, themeSettings, applyTermOptions, connectHost, quickConnect, retryTab, onTabClosed, fitTab, activeTab, ensureTermFont, writeTermData, type Tab } from './state';
+import { state, settingsOrDefault, themeSettings, applyTermOptions, connectHost, retryTab, reconnectTab, onTabClosed, fitTab, activeTab, ensureTermFont, writeTermData, type Tab } from './state';
 import { currentXtermTheme } from './themes';
 import { icon } from './icons';
 import { toastError } from './toast';
 import { openHostEditor } from './host-editor';
 import { importSSHConfig } from './sidebar';
+import { enhanceQuickConnect } from './quick-connect';
 
 onTabClosed(tab => {
     tab.term?.dispose();
     tab.term = null;
     tab.fit = null;
+    tab.search = null;
 });
 
 const termsRoot = () => document.getElementById('terms')!;
@@ -28,6 +31,7 @@ export function syncTerminals() {
         }
         tab.termEl!.classList.toggle('active', tab.key === state.activeKey);
         tab.termEl!.querySelector('.term-frame')?.classList.toggle('agent-active', tab.agentActive);
+        syncDiscBar(tab);
     }
     for (const child of Array.from(root.children)) {
         if (child.id === 'empty') continue;
@@ -76,6 +80,9 @@ async function createTermHost(tab: Tab) {
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
     term.loadAddon(new Unicode11Addon());
+    const searchAddon = new SearchAddon();
+    term.loadAddon(searchAddon);
+    tab.search = searchAddon;
     term.open(inner);
     tab.term = term;
     tab.fit = fit;
@@ -90,7 +97,7 @@ async function createTermHost(tab: Tab) {
             App.Write(tab.sessionId, data).catch(toastError);
         }
     });
-    term.attachCustomKeyEventHandler(ev => handleTermKey(ev, term));
+    term.attachCustomKeyEventHandler(ev => handleTermKey(ev, term, tab));
     term.onSelectionChange(() => {
         const st = settingsOrDefault();
         if (st.copyOnSelect && term.hasSelection()) {
@@ -119,7 +126,133 @@ export function fitActive() {
     if (tab) fitTab(tab);
 }
 
-function handleTermKey(ev: KeyboardEvent, term: Terminal): boolean {
+function syncDiscBar(tab: Tab) {
+    const frame = tab.termEl?.querySelector('.term-frame');
+    if (!frame) return;
+    let bar = frame.querySelector('.disc-bar') as HTMLElement | null;
+    const show = !!tab.sessionId && !tab.connected && !tab.error;
+    frame.classList.toggle('has-disc', show);
+    if (!show) {
+        bar?.remove();
+        return;
+    }
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.className = 'disc-bar';
+        const reason = document.createElement('span');
+        reason.className = 'disc-reason';
+        const btn = document.createElement('button');
+        btn.className = 'btn small';
+        btn.textContent = 'Reconnect';
+        btn.onclick = () => { void reconnectTab(tab); };
+        bar.append(reason, btn);
+        frame.appendChild(bar);
+    }
+    const reason = bar.querySelector('.disc-reason')!;
+    reason.textContent = 'Disconnected' + (tab.closedReason ? ' · ' + tab.closedReason : '');
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+    const h = hex.replace('#', '');
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+function mixHex(fg: string, bg: string, t: number): string {
+    const f = hexToRgb(fg);
+    const b = hexToRgb(bg);
+    const c = f.map((v, i) => Math.round(v * t + b[i] * (1 - t)));
+    return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function searchDecoOptions() {
+    const cs = getComputedStyle(document.documentElement);
+    const rawA = cs.getPropertyValue('--accent').trim();
+    const rawB = cs.getPropertyValue('--bg').trim();
+    const accent = /^#[0-9a-f]{6,8}$/i.test(rawA) ? rawA : '#86c294';
+    const bg = /^#[0-9a-f]{6,8}$/i.test(rawB) ? rawB : '#0f1012';
+    return {
+        decorations: {
+            matchBackground: mixHex(accent, bg, 0.28),
+            activeMatchBackground: mixHex(accent, bg, 0.5),
+            matchOverviewRuler: accent,
+            activeMatchColorOverviewRuler: accent,
+        },
+    };
+}
+
+export function toggleSearch() {
+    const tab = activeTab();
+    if (!tab?.term || !tab.search) return;
+    const frame = tab.termEl?.querySelector('.term-frame');
+    if (!frame) return;
+    let box = frame.querySelector('.term-search') as HTMLElement | null;
+    if (box) {
+        closeSearch(tab, box);
+        return;
+    }
+    box = document.createElement('div');
+    box.className = 'term-search no-drag';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Search';
+    input.spellcheck = false;
+    const count = document.createElement('span');
+    count.className = 'ts-count';
+    const mkBtn = (ic: string, tip: string, fn: () => void) => {
+        const b = document.createElement('button');
+        b.className = 'ts-btn';
+        b.dataset.tip = tip;
+        b.appendChild(icon(ic, 13));
+        b.onclick = fn;
+        return b;
+    };
+    const doSearch = (prev: boolean) => {
+        const q = input.value;
+        if (!q) {
+            tab.search!.clearDecorations();
+            count.textContent = '';
+            return;
+        }
+        const opts = searchDecoOptions();
+        const found = prev ? tab.search!.findPrevious(q, opts) : tab.search!.findNext(q, opts);
+        if (!found) count.textContent = 'no match';
+    };
+    tab.search.onDidChangeResults(r => {
+        count.textContent = r.resultCount > 0
+            ? `${r.resultIndex + 1} of ${r.resultCount}`
+            : 'no match';
+    });
+    input.addEventListener('input', () => doSearch(false));
+    input.addEventListener('keydown', ev => {
+        ev.stopPropagation();
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            doSearch(ev.shiftKey);
+        } else if (ev.key === 'Escape') {
+            ev.preventDefault();
+            closeSearch(tab, box!);
+        }
+    });
+    box.append(
+        input,
+        count,
+        mkBtn('chevron-up', 'Previous (Shift+Enter)', () => doSearch(true)),
+        mkBtn('chevron-down', 'Next (Enter)', () => doSearch(false)),
+        mkBtn('x', 'Close (Esc)', () => closeSearch(tab, box!)),
+    );
+    frame.appendChild(box);
+    input.focus();
+}
+
+function closeSearch(tab: Tab, box: HTMLElement) {
+    tab.search?.clearDecorations();
+    box.remove();
+    tab.term?.focus();
+}
+
+const APP_SHORTCUT_KEYS = new Set(['b', 'j', 'l', 't', 'f', 'w']);
+
+function handleTermKey(ev: KeyboardEvent, term: Terminal, tab: Tab): boolean {
     if (ev.ctrlKey && ev.shiftKey && !ev.altKey) {
         const k = ev.key.toLowerCase();
         if (k === 'c') {
@@ -133,6 +266,14 @@ function handleTermKey(ev: KeyboardEvent, term: Terminal): boolean {
             navigator.clipboard.readText().then(t => { if (t) term.paste(t); }).catch(toastError);
             return false;
         }
+        if (APP_SHORTCUT_KEYS.has(k)) return false;
+    }
+    if (ev.ctrlKey && !ev.altKey && ev.key === ',') return false;
+    if (ev.ctrlKey && !ev.shiftKey && !ev.altKey && ev.key === 'Tab') return false;
+    if (tab.sessionId && !tab.connected && !tab.error && ev.key === 'Enter' && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+        ev.preventDefault();
+        void reconnectTab(tab);
+        return false;
     }
     return true;
 }
@@ -167,13 +308,8 @@ function renderEmpty() {
     input.spellcheck = false;
     input.autocomplete = 'off';
     input.id = 'empty-quick-connect';
-    input.addEventListener('keydown', ev => {
-        if (ev.key === 'Enter' && input.value.trim()) {
-            void quickConnect(input.value.trim());
-            input.value = '';
-        }
-    });
     wrap.appendChild(input);
+    enhanceQuickConnect(input);
     el.appendChild(wrap);
 
     if (state.hosts.length === 0) {

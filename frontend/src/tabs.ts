@@ -1,43 +1,71 @@
-import { state, activateTab, closeTab, cycleTab, type Tab } from './state';
+import { state, activateTab, activeTab, closeTab, cycleTab, reconnectTab, retryTab, duplicateTab, moveTab, type Tab } from './state';
 import { icon } from './icons';
+import { contextMenuAt, type MenuEntry } from './ui';
 
 const bar = () => document.getElementById('tabbar')!;
+const els = new Map<string, HTMLElement>();
 
 export function renderTabs() {
     const el = bar();
-    el.innerHTML = '';
-    for (const tab of state.tabs) {
-        el.appendChild(tabEl(tab));
+    const seen = new Set<string>();
+    state.tabs.forEach((tab, i) => {
+        seen.add(tab.key);
+        let node = els.get(tab.key);
+        if (!node) {
+            node = tabEl(tab);
+            els.set(tab.key, node);
+        }
+        node.classList.toggle('active', tab.key === state.activeKey);
+        const color = tab.color || '';
+        if (color) {
+            node.classList.add('has-color');
+            node.style.setProperty('--tab-color', color);
+        } else {
+            node.classList.remove('has-color');
+            node.style.removeProperty('--tab-color');
+        }
+        const dot = node.querySelector('.t-dot') as HTMLElement;
+        dot.className = 't-dot' + (tab.error ? ' err' : tab.agentActive ? ' agent' : tab.connected ? ' on' : '');
+        const title = node.querySelector('.t-title') as HTMLElement;
+        if (title.textContent !== tab.title) title.textContent = tab.title;
+        node.dataset.tip = tab.closedReason || tab.error ? tab.title + ' — ' + (tab.closedReason || tab.error) : tab.title;
+        const agentTag = node.querySelector('.t-agent') as HTMLElement | null;
+        if (tab.agentActive && !agentTag) {
+            const ag = document.createElement('span');
+            ag.className = 't-agent';
+            ag.textContent = 'Agent typing';
+            node.insertBefore(ag, node.querySelector('.t-close'));
+        } else if (!tab.agentActive && agentTag) {
+            agentTag.remove();
+        }
+        if (el.children[i] !== node) el.insertBefore(node, el.children[i] ?? null);
+    });
+    for (const [key, node] of els) {
+        if (!seen.has(key)) {
+            node.remove();
+            els.delete(key);
+        }
     }
-    const add = document.createElement('button');
-    add.className = 'tab new-tab';
-    add.dataset.tip = 'New quick connect';
-    add.dataset.tipKeys = 'Ctrl+Shift+T';
-    add.appendChild(icon('plus', 15));
-    add.onclick = () => focusQuickConnect();
-    el.appendChild(add);
+    let add = el.querySelector('.new-tab') as HTMLElement | null;
+    if (!add) {
+        add = document.createElement('button');
+        add.className = 'tab new-tab';
+        add.dataset.tip = 'New quick connect';
+        add.dataset.tipKeys = 'Ctrl+Shift+T';
+        add.appendChild(icon('plus', 15));
+        add.onclick = () => focusQuickConnect();
+        el.appendChild(add);
+    }
 }
 
 function tabEl(tab: Tab): HTMLElement {
     const el = document.createElement('div');
-    el.className = 'tab' + (tab.key === state.activeKey ? ' active' : '');
-    if (tab.color) {
-        el.classList.add('has-color');
-        el.style.setProperty('--tab-color', tab.color);
-    }
-    if (tab.closedReason || tab.error) {
-        el.dataset.tip = tab.title + ' — ' + (tab.closedReason || tab.error);
-    } else {
-        el.dataset.tip = tab.title;
-    }
-    el.onclick = () => activateTab(tab.key);
-    el.onauxclick = ev => { if (ev.button === 1) closeTab(tab.key); };
+    el.className = 'tab';
+    el.draggable = true;
+    el.dataset.key = tab.key;
 
     const dot = document.createElement('span');
     dot.className = 't-dot';
-    if (tab.error) dot.classList.add('err');
-    else if (tab.agentActive) dot.classList.add('agent');
-    else if (tab.connected) dot.classList.add('on');
     el.appendChild(dot);
 
     const title = document.createElement('span');
@@ -45,19 +73,70 @@ function tabEl(tab: Tab): HTMLElement {
     title.textContent = tab.title;
     el.appendChild(title);
 
-    if (tab.agentActive) {
-        const ag = document.createElement('span');
-        ag.className = 't-agent';
-        ag.textContent = 'Agent typing';
-        el.appendChild(ag);
-    }
-
     const close = document.createElement('button');
     close.className = 't-close';
     close.appendChild(icon('x', 12));
     close.onclick = ev => { ev.stopPropagation(); closeTab(tab.key); };
     el.appendChild(close);
+
+    el.onclick = () => activateTab(tab.key);
+    el.onauxclick = ev => { if (ev.button === 1) closeTab(tab.key); };
+    el.oncontextmenu = ev => {
+        const items: MenuEntry[] = [];
+        if (tab.error && tab.pending) {
+            items.push({ label: 'Retry', icon: 'rotate-ccw', onSelect: () => { void retryTab(tab); } });
+        } else if (tab.sessionId && !tab.connected) {
+            items.push({ label: 'Reconnect', icon: 'rotate-ccw', onSelect: () => { void reconnectTab(tab); } });
+        }
+        items.push(
+            { label: 'Duplicate session', icon: 'copy', onSelect: () => { void duplicateTab(tab); } },
+            { sep: true },
+            { label: 'Close', icon: 'x', shortcut: 'Ctrl+Shift+W', onSelect: () => closeTab(tab.key) },
+            { label: 'Close others', icon: 'x', onSelect: () => closeOthers(tab.key) },
+        );
+        contextMenuAt(items, ev);
+    };
+
+    el.ondragstart = ev => {
+        ev.dataTransfer?.setData('text/plain', tab.key);
+        if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+        el.classList.add('dragging');
+    };
+    el.ondragend = () => el.classList.remove('dragging');
+    el.ondragover = ev => {
+        ev.preventDefault();
+        if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+        const dragging = document.querySelector('.tab.dragging');
+        if (dragging && dragging !== el) {
+            const rect = el.getBoundingClientRect();
+            const after = ev.clientX > rect.left + rect.width / 2;
+            el.classList.toggle('drop-after', after);
+            el.classList.toggle('drop-before', !after);
+        }
+    };
+    el.ondragleave = () => {
+        el.classList.remove('drop-after', 'drop-before');
+    };
+    el.ondrop = ev => {
+        ev.preventDefault();
+        el.classList.remove('drop-after', 'drop-before');
+        const key = ev.dataTransfer?.getData('text/plain') ?? '';
+        if (!key || key === tab.key) return;
+        const from = state.tabs.findIndex(t => t.key === key);
+        const rect = el.getBoundingClientRect();
+        let to = state.tabs.findIndex(t => t.key === tab.key);
+        if (ev.clientX > rect.left + rect.width / 2) to += 1;
+        if (from < 0 || to < 0) return;
+        const adjusted = from < to ? to - 1 : to;
+        moveTab(key, adjusted);
+    };
     return el;
+}
+
+function closeOthers(keepKey: string) {
+    for (const t of [...state.tabs]) {
+        if (t.key !== keepKey) closeTab(t.key);
+    }
 }
 
 export function focusQuickConnect() {
@@ -75,7 +154,8 @@ export function handleTabShortcut(e: KeyboardEvent) {
     }
     if (e.shiftKey && e.key.toLowerCase() === 'w') {
         e.preventDefault();
-        if (state.activeKey) closeTab(state.activeKey);
+        const t = activeTab();
+        if (t) closeTab(t.key);
         return true;
     }
     return false;

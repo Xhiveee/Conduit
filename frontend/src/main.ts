@@ -4,14 +4,15 @@ import '@fontsource/jetbrains-mono/cyrillic-400.css';
 import '@fontsource/jetbrains-mono/latin-600.css';
 import '@fontsource/jetbrains-mono/cyrillic-600.css';
 import * as App from '../wailsjs/go/main/App';
-import { init, onUI, quickConnect, settingsOrDefault } from './state';
+import { init, onUI, settingsOrDefault } from './state';
 import { renderTabs, handleTabShortcut, focusQuickConnect } from './tabs';
-import { syncTerminals, fitActive } from './terminal';
+import { syncTerminals, fitActive, toggleSearch } from './terminal';
 import { renderSidebar } from './sidebar';
 import { renderAgent, focusAgentInput } from './agent-panel';
 import { toggleSettings } from './settings';
 import { icon } from './icons';
-import { initTooltips, installContextMenuGuard, escapeTop } from './ui';
+import { initTooltips, installContextMenuGuard, escapeTop, layerDepth } from './ui';
+import { enhanceQuickConnect } from './quick-connect';
 import { WindowMinimise, WindowToggleMaximise, Quit } from '../wailsjs/runtime/runtime';
 
 function renderAll() {
@@ -40,14 +41,7 @@ function setupTitlebar() {
     });
 
     const qc = document.getElementById('quick-connect') as HTMLInputElement;
-    qc.addEventListener('keydown', ev => {
-        if (ev.key === 'Enter' && qc.value.trim()) {
-            void quickConnect(qc.value.trim());
-            qc.value = '';
-            qc.blur();
-        }
-        if (ev.key === 'Escape') qc.blur();
-    });
+    enhanceQuickConnect(qc);
 }
 
 function uiScale(): number {
@@ -95,39 +89,37 @@ function setupSplitters() {
     bind('split-agent', 'agent', '--agent-w', 280, 640, 'agent');
 }
 
+function togglePanel(key: 'sidebarVisible' | 'agentVisible') {
+    const s = settingsOrDefault();
+    s[key] = !s[key];
+    void App.SaveSettings(s);
+}
+
 function setupShortcuts() {
     window.addEventListener('keydown', ev => {
-        const target = ev.target as HTMLElement;
-        const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
         if (ev.key === 'Escape') {
             if (escapeTop()) {
                 ev.preventDefault();
             }
             return;
         }
+        if (layerDepth() > 0) return;
         if (handleTabShortcut(ev)) return;
         if (!ev.ctrlKey || ev.altKey) return;
-        const k = ev.key.toLowerCase();
-        if (k === ',') {
+        if (ev.key === ',') {
             ev.preventDefault();
             toggleSettings();
-        } else if (k === 'b' && !typing) {
-            ev.preventDefault();
-            const s = settingsOrDefault();
-            s.sidebarVisible = !s.sidebarVisible;
-            void App.SaveSettings(s);
-        } else if (k === 'j' && !typing) {
-            ev.preventDefault();
-            const s = settingsOrDefault();
-            s.agentVisible = !s.agentVisible;
-            void App.SaveSettings(s);
-        } else if (k === 'l' && !typing) {
-            ev.preventDefault();
-            focusAgentInput();
-        } else if (ev.shiftKey && k === 't') {
-            ev.preventDefault();
-            focusQuickConnect();
+            return;
         }
+        if (!ev.shiftKey) return;
+        const k = ev.key.toLowerCase();
+        if (!['b', 'j', 'l', 't', 'f'].includes(k)) return;
+        ev.preventDefault();
+        if (k === 'b') togglePanel('sidebarVisible');
+        else if (k === 'j') togglePanel('agentVisible');
+        else if (k === 'l') focusAgentInput();
+        else if (k === 't') focusQuickConnect();
+        else if (k === 'f') toggleSearch();
     });
 }
 

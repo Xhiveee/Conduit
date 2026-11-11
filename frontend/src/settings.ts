@@ -68,12 +68,14 @@ const SECTIONS: SettingsSection[] = [
     { id: 'themes', label: 'Themes', render: renderThemes },
     { id: 'terminal', label: 'Terminal', render: renderTerminal },
     { id: 'agent', label: 'Agent', render: renderAgentSection },
+    { id: 'keyboard', label: 'Keyboard', render: renderKeyboard },
     { id: 'css', label: 'Custom CSS', render: renderCustomCSS },
 ];
 
 let settingsClose: (() => void) | null = null;
+let showSection: ((sec: SettingsSection) => void) | null = null;
 
-export function openSettings() {
+export function openSettings(initialSection?: string) {
     const modal = document.createElement('div');
     modal.className = 'modal wide';
 
@@ -112,6 +114,7 @@ export function openSettings() {
     const closeDialog = openDialog(modal);
     settingsClose = () => {
         settingsClose = null;
+        showSection = null;
         closeDialog();
     };
     closeBtn.onclick = () => settingsClose?.();
@@ -122,6 +125,7 @@ export function openSettings() {
         pane.innerHTML = '';
         sec.render(pane);
     };
+    showSection = show;
     for (const sec of SECTIONS) {
         const b = document.createElement('button');
         b.type = 'button';
@@ -130,7 +134,7 @@ export function openSettings() {
         b.onclick = () => show(sec);
         nav.appendChild(b);
     }
-    show(SECTIONS[0]);
+    show(SECTIONS.find(s => s.id === initialSection) ?? SECTIONS[0]);
 }
 
 function group(): HTMLElement {
@@ -579,10 +583,56 @@ function renderCustomCSS(pane: HTMLElement) {
     pane.appendChild(g);
 }
 
-export function toggleSettings() {
+const KEYBOARD_SHORTCUTS: [string, string][] = [
+    ['Ctrl+Shift+B', 'Toggle sidebar'],
+    ['Ctrl+Shift+J', 'Toggle agent panel'],
+    ['Ctrl+Shift+L', 'Focus agent input'],
+    ['Ctrl+Shift+T', 'Quick connect'],
+    ['Ctrl+Shift+F', 'Search terminal'],
+    ['Ctrl+,', 'Settings'],
+    ['Ctrl+Tab', 'Next tab'],
+    ['Ctrl+Shift+Tab', 'Previous tab'],
+    ['Ctrl+Shift+W', 'Close tab'],
+    ['Esc', 'Close dialog or search'],
+];
+
+function renderKeyboard(pane: HTMLElement) {
+    const g = group();
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = 'Shortcuts work from anywhere, including while the terminal has focus.';
+    g.appendChild(sub);
+    const list = document.createElement('div');
+    list.className = 'kbd-list';
+    for (const [keys, desc] of KEYBOARD_SHORTCUTS) {
+        const row = document.createElement('div');
+        row.className = 'kbd-row';
+        const ks = document.createElement('span');
+        ks.className = 'kbd-keys';
+        for (const part of keys.split('+')) {
+            const k = document.createElement('kbd');
+            k.textContent = part.trim();
+            ks.appendChild(k);
+        }
+        const d = document.createElement('span');
+        d.className = 'kbd-desc';
+        d.textContent = desc;
+        row.append(ks, d);
+        list.appendChild(row);
+    }
+    g.appendChild(list);
+    pane.appendChild(g);
+}
+
+export function toggleSettings(sectionId?: string) {
     if (settingsClose) {
+        if (sectionId && showSection) {
+            const sec = SECTIONS.find(s => s.id === sectionId);
+            if (sec) showSection(sec);
+            return;
+        }
         settingsClose();
         return;
     }
-    openSettings();
+    openSettings(sectionId);
 }

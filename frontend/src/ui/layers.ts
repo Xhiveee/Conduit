@@ -13,6 +13,10 @@ export function pushLayer(close: () => void): () => void {
     };
 }
 
+export function layerDepth(): number {
+    return stack.length;
+}
+
 export function escapeTop(): boolean {
     const top = stack[stack.length - 1];
     if (!top) return false;

@@ -5,6 +5,7 @@ import {
     SendHorizontal, Bot, SquareTerminal, Server, FolderTree, Fingerprint,
     Check, AlertTriangle, LoaderCircle, PanelLeft, PanelRight, Eye, EyeOff,
     CircleDot, ArrowRight, Info, FileKey, CopyPlus, MoreHorizontal,
+    Clipboard, ChevronUp,
 } from 'lucide';
 
 const MAP: Record<string, any> = {
@@ -18,6 +19,7 @@ const MAP: Record<string, any> = {
     loader: LoaderCircle, 'panel-left': PanelLeft, 'panel-right': PanelRight,
     eye: Eye, 'eye-off': EyeOff, 'circle-dot': CircleDot, 'arrow-right': ArrowRight,
     info: Info, 'file-key': FileKey, 'copy-plus': CopyPlus, 'more-horizontal': MoreHorizontal,
+    clipboard: Clipboard, 'chevron-up': ChevronUp,
 };
 
 export function icon(name: string, size = 16): SVGElement {

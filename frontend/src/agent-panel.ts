@@ -2,6 +2,7 @@ import * as App from '../wailsjs/go/main/App';
 import { state, onUI, notify, agentTargetId, settingsOrDefault, type AgentMsg, type ToolCard } from './state';
 import { icon } from './icons';
 import { toastError } from './toast';
+import { toggleSettings } from './settings';
 
 const root = () => document.getElementById('agent')!;
 let inputEl: HTMLTextAreaElement | null = null;
@@ -25,16 +26,32 @@ const TOOL_LABELS: Record<string, string> = {
     list_themes: 'List themes',
 };
 
+const EXAMPLES = [
+    'Check disk usage on this server',
+    'Show the last 50 lines of syslog',
+    'Switch to the light theme',
+];
+
+let built = false;
+let modelEl: HTMLButtonElement | null = null;
+let targetVal: HTMLElement | null = null;
+let msgsEl: HTMLElement | null = null;
+let hintEl: HTMLElement | null = null;
+let sendBtn: HTMLButtonElement | null = null;
+let emptyEl: HTMLElement | null = null;
+const msgEls = new Map<number, { el: HTMLElement; sig: string }>();
+let forceScroll = false;
+
 export function renderAgent() {
     const el = root();
-    const s = settingsOrDefault();
-    const wasScrolled = el.querySelector('.ag-msgs');
-    const nearBottom = wasScrolled ? wasScrolled.scrollHeight - wasScrolled.scrollTop - wasScrolled.clientHeight < 60 : true;
-    const hadFocus = inputEl !== null && document.activeElement === inputEl;
-    const savedVal = inputEl?.value ?? '';
-    const savedPos = inputEl?.selectionStart ?? 0;
+    if (!built) {
+        built = true;
+        buildChrome(el);
+    }
+    updateChrome();
+}
 
-    el.innerHTML = '';
+function buildChrome(el: HTMLElement) {
     const head = document.createElement('div');
     head.className = 'ag-head';
     const title = document.createElement('div');
@@ -42,9 +59,11 @@ export function renderAgent() {
     const botIcon = icon('bot', 15);
     const nameEl = document.createElement('span');
     nameEl.textContent = 'Agent';
-    const modelEl = document.createElement('span');
+    modelEl = document.createElement('button');
     modelEl.className = 'ag-model';
-    modelEl.textContent = s.ai?.model || '';
+    modelEl.type = 'button';
+    modelEl.dataset.tip = 'Agent settings';
+    modelEl.onclick = () => toggleSettings('agent');
     title.append(botIcon, nameEl, modelEl);
 
     const resetBtn = document.createElement('button');
@@ -63,29 +82,16 @@ export function renderAgent() {
 
     const target = document.createElement('div');
     target.className = 'ag-target';
-    const tid = agentTargetId();
-    const targetTab = state.tabs.find(t => t.sessionId === tid);
-    target.innerHTML = '';
     const tlabel = document.createElement('span');
     tlabel.className = 'ag-target-label';
     tlabel.textContent = 'Target: ';
-    const tval = document.createElement('b');
-    tval.textContent = targetTab ? targetTab.title : 'none';
-    target.append(tlabel, tval);
+    targetVal = document.createElement('b');
+    target.append(tlabel, targetVal);
     el.appendChild(target);
 
-    const msgs = document.createElement('div');
-    msgs.className = 'ag-msgs';
-    if (state.agentMessages.length === 0) {
-        const hint = document.createElement('div');
-        hint.className = 'msg system-note';
-        hint.textContent = 'Ask the agent to inspect hosts, run commands, or manage sessions. It types into the terminal you see.';
-        msgs.appendChild(hint);
-    }
-    for (const m of state.agentMessages) {
-        msgs.appendChild(msgEl(m));
-    }
-    el.appendChild(msgs);
+    msgsEl = document.createElement('div');
+    msgsEl.className = 'ag-msgs';
+    el.appendChild(msgsEl);
 
     const inputWrap = document.createElement('div');
     inputWrap.className = 'ag-input';
@@ -107,33 +113,112 @@ export function renderAgent() {
     });
     const row = document.createElement('div');
     row.className = 'ag-input-row';
-    const hint = document.createElement('span');
-    hint.className = 'ag-hint';
-    hint.textContent = state.agentBusy ? 'Agent is working…' : 'Enter to send, Shift+Enter for newline';
-    const send = document.createElement('button');
-    send.className = 'ag-send';
-    if (state.agentBusy) {
-        send.dataset.tip = 'Stop agent';
-        send.appendChild(icon('square', 14));
-        send.onclick = () => { App.AgentStop().catch(toastError); };
-    } else {
-        send.dataset.tip = 'Send';
-        send.dataset.tipKeys = 'Enter';
-        send.appendChild(icon('send', 15));
-        send.onclick = () => sendAgentMessage(ta.value);
-    }
-    row.append(hint, send);
+    hintEl = document.createElement('span');
+    hintEl.className = 'ag-hint';
+    sendBtn = document.createElement('button');
+    sendBtn.className = 'ag-send';
+    sendBtn.type = 'button';
+    row.append(hintEl, sendBtn);
     inputWrap.append(ta, row);
     el.appendChild(inputWrap);
+}
 
-    if (hadFocus) {
-        ta.value = savedVal;
-        ta.setSelectionRange(savedPos, savedPos);
-        ta.focus();
+function updateChrome() {
+    const s = settingsOrDefault();
+    if (modelEl) modelEl.textContent = s.ai?.model || 'no model';
+    const tid = agentTargetId();
+    const targetTab = state.tabs.find(t => t.sessionId === tid);
+    if (targetVal) targetVal.textContent = targetTab ? targetTab.title : 'none';
+
+    if (sendBtn) {
+        sendBtn.innerHTML = '';
+        if (state.agentBusy) {
+            sendBtn.dataset.tip = 'Stop agent';
+            sendBtn.dataset.tipKeys = 'Esc';
+            sendBtn.appendChild(icon('square', 14));
+            sendBtn.onclick = () => { App.AgentStop().catch(toastError); };
+        } else {
+            sendBtn.dataset.tip = 'Send';
+            sendBtn.dataset.tipKeys = 'Enter';
+            sendBtn.appendChild(icon('send', 15));
+            sendBtn.onclick = () => { if (inputEl) sendAgentMessage(inputEl.value); };
+        }
     }
-    if (nearBottom) {
-        requestAnimationFrame(() => { msgs.scrollTop = msgs.scrollHeight; });
+    if (hintEl) {
+        hintEl.textContent = state.agentBusy ? 'Agent is working…' : 'Enter to send, Shift+Enter for newline';
     }
+    syncMessages();
+}
+
+function syncMessages() {
+    if (!msgsEl) return;
+    const nearBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 60;
+    const msgs = state.agentMessages;
+    const ids = new Set(msgs.map(m => m.id));
+    for (const [id, rec] of msgEls) {
+        if (!ids.has(id)) {
+            rec.el.remove();
+            msgEls.delete(id);
+        }
+    }
+    let changed = false;
+    for (const m of msgs) {
+        const sig = msgSig(m);
+        const rec = msgEls.get(m.id);
+        if (rec && rec.sig === sig) continue;
+        const el = msgEl(m);
+        if (rec) {
+            rec.el.replaceWith(el);
+            msgEls.set(m.id, { el, sig });
+        } else {
+            msgEls.set(m.id, { el, sig });
+            msgsEl.appendChild(el);
+        }
+        changed = true;
+    }
+    if (msgs.length === 0) {
+        if (!emptyEl) {
+            emptyEl = buildEmpty();
+            msgsEl.appendChild(emptyEl);
+        }
+    } else if (emptyEl) {
+        emptyEl.remove();
+        emptyEl = null;
+    }
+    if (changed || forceScroll || nearBottom) {
+        forceScroll = false;
+        const box = msgsEl;
+        requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
+    }
+}
+
+function msgSig(m: AgentMsg): string {
+    if (m.kind === 'tool' && m.tool) {
+        const t = m.tool;
+        return `tool:${t.callId}:${t.status}:${t.result.length}:${t.open}:${t.args}`;
+    }
+    return `${m.kind}:${m.content ?? ''}`;
+}
+
+function buildEmpty(): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'ag-empty';
+    const hint = document.createElement('div');
+    hint.className = 'msg system-note';
+    hint.textContent = 'Ask the agent to inspect hosts, run commands, or manage sessions. It types into the terminal you see.';
+    wrap.appendChild(hint);
+    const list = document.createElement('div');
+    list.className = 'ag-examples';
+    for (const ex of EXAMPLES) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'ag-example';
+        b.textContent = ex;
+        b.onclick = () => sendAgentMessage(ex);
+        list.appendChild(b);
+    }
+    wrap.appendChild(list);
+    return wrap;
 }
 
 function sendAgentMessage(text: string) {
@@ -143,6 +228,7 @@ function sendAgentMessage(text: string) {
         inputEl.value = '';
         inputEl.style.height = 'auto';
     }
+    forceScroll = true;
     App.AgentSend(t, agentTargetId()).catch(err => {
         toastError(err);
         if (inputEl && inputEl.value === '') {
@@ -200,6 +286,7 @@ function toolEl(t: ToolCard): HTMLElement {
     head.onclick = () => {
         t.open = !t.open;
         card.classList.toggle('open', t.open);
+        notify();
     };
     card.appendChild(head);
 
@@ -226,7 +313,7 @@ function toolEl(t: ToolCard): HTMLElement {
         approve.textContent = 'Approve';
         approve.onclick = ev => { ev.stopPropagation(); void App.AgentApprove(t.callId, true); };
         const reject = document.createElement('button');
-        reject.className = 'btn danger';
+        reject.className = 'btn';
         reject.textContent = 'Reject';
         reject.onclick = ev => { ev.stopPropagation(); void App.AgentApprove(t.callId, false); };
         actions.append(approve, reject);

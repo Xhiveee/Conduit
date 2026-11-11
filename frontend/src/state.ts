@@ -1,10 +1,12 @@
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
+import type { SearchAddon } from '@xterm/addon-search';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import * as App from '../wailsjs/go/main/App';
 import type { main } from '../wailsjs/go/models';
 import { applyTheme, currentXtermTheme, resolveTheme, type ThemeDef } from './themes';
 import { toastError } from './toast';
+import { promptDialog } from './ui/dialog';
 
 export interface Tab {
     key: string;
@@ -14,6 +16,8 @@ export interface Tab {
     color: string;
     user: string;
     address: string;
+    qcTarget: string;
+    reconnecting: boolean;
     connected: boolean;
     agentActive: boolean;
     closedReason: string;
@@ -21,6 +25,7 @@ export interface Tab {
     pending: { hostId?: string; target?: string } | null;
     term: Terminal | null;
     fit: FitAddon | null;
+    search: SearchAddon | null;
     termEl: HTMLElement | null;
     pendingData?: string[];
 }
@@ -286,8 +291,13 @@ export function writeTermData(tab: Tab, b64: string) {
     }
 }
 
+const qcTargets = new Map<string, string>();
+
 export function upsertSessionTab(info: main.SessionInfo) {
-    let tab = tabBySession(info.id);
+    const reuse = state.tabs.find(t => t.reconnecting &&
+        ((t.hostId && t.hostId === info.hostId) ||
+         (!t.hostId && t.qcTarget && t.user === info.user && t.address === info.address))) ?? tabBySession(info.id);
+    let tab = reuse;
     if (!tab) {
         tab = {
             key: info.id,
@@ -297,6 +307,8 @@ export function upsertSessionTab(info: main.SessionInfo) {
             color: info.color || '',
             user: info.user || '',
             address: info.address || '',
+            qcTarget: qcTargets.get(info.id) ?? '',
+            reconnecting: false,
             connected: true,
             agentActive: false,
             closedReason: '',
@@ -304,11 +316,19 @@ export function upsertSessionTab(info: main.SessionInfo) {
             pending: null,
             term: null,
             fit: null,
+            search: null,
             termEl: null,
         };
         state.tabs.push(tab);
     } else {
         tab.title = info.title || tab.title;
+        tab.sessionId = info.id;
+        tab.hostId = info.hostId || tab.hostId;
+        tab.color = info.color || tab.color;
+        tab.user = info.user || tab.user;
+        tab.address = info.address || tab.address;
+        if (!tab.qcTarget) tab.qcTarget = qcTargets.get(info.id) ?? '';
+        tab.reconnecting = false;
         tab.connected = true;
         tab.closedReason = '';
         tab.error = '';
@@ -343,21 +363,107 @@ export function cycleTab(dir: number) {
     activateTab(state.tabs[next].key);
 }
 
+type ConnResult = { id: string } | { error: string };
+
+function errText(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+}
+
+function authPromptLabel(kind: string, label: string): string {
+    return (kind === 'passphrase' ? 'Key passphrase for ' : 'Password for ') + label;
+}
+
+function authKind(err: unknown): string {
+    const m = errText(err).match(/auth_required:(password|passphrase)/);
+    return m ? m[1] : '';
+}
+
+async function connectHostInner(host: main.Host, dims: { cols: number; rows: number }): Promise<ConnResult> {
+    try {
+        return { id: await App.Connect(host.id, dims.cols, dims.rows) };
+    } catch (err) {
+        const kind = authKind(err);
+        if (!kind) return { error: errText(err) };
+        const msg = errText(err);
+        const label = host.name || host.user + '@' + host.address;
+        const res = await promptDialog({
+            title: 'Authentication required',
+            label: authPromptLabel(kind, label),
+            password: true,
+            checkboxLabel: 'Save to host',
+        });
+        if (res === null) return { error: msg };
+        try {
+            return { id: await App.ConnectWithSecret(host.id, res.value, res.checked, dims.cols, dims.rows) };
+        } catch (err2) {
+            return { error: errText(err2) };
+        }
+    }
+}
+
+async function quickConnectInner(target: string, password: string, dims: { cols: number; rows: number }): Promise<ConnResult> {
+    try {
+        const id = await App.QuickConnect(target, password, dims.cols, dims.rows);
+        return { id };
+    } catch (err) {
+        const kind = authKind(err);
+        if (!kind) return { error: errText(err) };
+        const msg = errText(err);
+        const res = await promptDialog({
+            title: 'Authentication required',
+            label: authPromptLabel(kind, target),
+            password: true,
+        });
+        if (res === null) return { error: msg };
+        try {
+            return { id: await App.QuickConnect(target, res.value, dims.cols, dims.rows) };
+        } catch (err2) {
+            return { error: errText(err2) };
+        }
+    }
+}
+
 export async function connectHost(host: main.Host) {
     const dims = currentDims();
-    try {
-        await App.Connect(host.id, dims.cols, dims.rows);
-    } catch (err) {
-        addErrorTab(host.name || host.user + '@' + host.address, String(err), { hostId: host.id });
+    const res = await connectHostInner(host, dims);
+    if ('error' in res) {
+        addErrorTab(host.name || host.user + '@' + host.address, res.error, { hostId: host.id });
     }
 }
 
 export async function quickConnect(target: string, password = '') {
     const dims = currentDims();
-    try {
-        await App.QuickConnect(target, password, dims.cols, dims.rows);
-    } catch (err) {
-        addErrorTab(target, String(err), { target });
+    const res = await quickConnectInner(target, password, dims);
+    if ('id' in res) qcTargets.set(res.id, target);
+    else addErrorTab(target, res.error, { target });
+}
+
+export async function reconnectTab(tab: Tab) {
+    if (tab.reconnecting || tab.error) return;
+    const dims = currentDims();
+    tab.reconnecting = true;
+    tab.term?.write('\x1b[2m\r\n—— connection lost, reconnecting ——\x1b[0m\r\n');
+    notify();
+    let res: ConnResult;
+    if (tab.hostId) {
+        const host = state.hosts.find(h => h.id === tab.hostId);
+        if (!host) {
+            tab.reconnecting = false;
+            toastError(new Error('saved host no longer exists'));
+            return;
+        }
+        res = await connectHostInner(host, dims);
+    } else {
+        const target = tab.qcTarget || ([tab.user, tab.address].filter(Boolean).join('@') || tab.title);
+        res = await quickConnectInner(target, '', dims);
+    }
+    if ('id' in res) {
+        if (tab.qcTarget && !tab.hostId) qcTargets.set(res.id, tab.qcTarget);
+        notify();
+    } else {
+        tab.reconnecting = false;
+        toastError(new Error(res.error));
+        notify();
     }
 }
 
@@ -377,6 +483,8 @@ export function addErrorTab(title: string, error: string, pending: { hostId?: st
         color: '',
         user: '',
         address: pending.target ?? '',
+        qcTarget: pending.target ?? '',
+        reconnecting: false,
         connected: false,
         agentActive: false,
         closedReason: '',
@@ -384,6 +492,7 @@ export function addErrorTab(title: string, error: string, pending: { hostId?: st
         pending,
         term: null,
         fit: null,
+        search: null,
         termEl: null,
     });
     state.activeKey = key;
@@ -413,6 +522,26 @@ export function closeTab(key: string) {
         const next = state.tabs[Math.min(idx, state.tabs.length - 1)];
         state.activeKey = next ? next.key : '';
     }
+    notify();
+}
+
+export async function duplicateTab(tab: Tab) {
+    if (tab.hostId) {
+        const host = state.hosts.find(h => h.id === tab.hostId);
+        if (host) {
+            await connectHost(host);
+            return;
+        }
+    }
+    const target = tab.qcTarget || ([tab.user, tab.address].filter(Boolean).join('@') || tab.title);
+    if (target) await quickConnect(target);
+}
+
+export function moveTab(key: string, toIndex: number) {
+    const idx = state.tabs.findIndex(t => t.key === key);
+    if (idx < 0) return;
+    const [tab] = state.tabs.splice(idx, 1);
+    state.tabs.splice(Math.max(0, Math.min(toIndex, state.tabs.length)), 0, tab);
     notify();
 }
 

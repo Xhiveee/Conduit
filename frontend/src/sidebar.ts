@@ -4,53 +4,72 @@ import { icon } from './icons';
 import { openHostEditor } from './host-editor';
 import { toastError, toastInfo } from './toast';
 import { confirmDialog } from './ui/dialog';
+import { contextMenuAt, showMenuAt, type MenuEntry } from './ui';
 
 const root = () => document.getElementById('sidebar')!;
 
+let chromeBuilt = false;
+let listEl: HTMLElement | null = null;
+let lastSig = '';
+let filterText = '';
+const collapsed = new Set<string>();
+
 export function renderSidebar() {
     const el = root();
-    el.innerHTML = '';
+    if (!chromeBuilt) {
+        chromeBuilt = true;
+        el.innerHTML = '';
 
-    const searchWrap = document.createElement('div');
-    searchWrap.className = 'sb-search';
-    const searchIcon = icon('search', 14);
-    const search = document.createElement('input');
-    search.type = 'text';
-    search.placeholder = 'Search hosts';
-    search.spellcheck = false;
-    search.value = filterText;
-    search.addEventListener('input', () => { filterText = search.value; renderList(); });
-    searchWrap.append(searchIcon, search);
-    el.appendChild(searchWrap);
+        const searchWrap = document.createElement('div');
+        searchWrap.className = 'sb-search';
+        const searchIcon = icon('search', 14);
+        const search = document.createElement('input');
+        search.type = 'text';
+        search.placeholder = 'Search hosts';
+        search.spellcheck = false;
+        search.value = filterText;
+        search.addEventListener('input', () => { filterText = search.value; renderList(true); });
+        searchWrap.append(searchIcon, search);
+        el.appendChild(searchWrap);
 
-    const actions = document.createElement('div');
-    actions.className = 'sb-actions';
-    const newBtn = document.createElement('button');
-    newBtn.className = 'sb-btn primary';
-    newBtn.append(icon('plus', 14), document.createTextNode('New host'));
-    newBtn.onclick = () => openHostEditor(null);
-    const importBtn = document.createElement('button');
-    importBtn.className = 'sb-btn';
-    importBtn.dataset.tip = 'Import from ~/.ssh/config';
-    importBtn.append(icon('download', 14), document.createTextNode('Import'));
-    importBtn.onclick = () => { void importSSHConfig(); };
-    actions.append(newBtn, importBtn);
-    el.appendChild(actions);
+        const actions = document.createElement('div');
+        actions.className = 'sb-actions';
+        const newBtn = document.createElement('button');
+        newBtn.className = 'sb-btn primary';
+        newBtn.append(icon('plus', 14), document.createTextNode('New host'));
+        newBtn.onclick = () => openHostEditor(null);
+        const importBtn = document.createElement('button');
+        importBtn.className = 'sb-btn';
+        importBtn.dataset.tip = 'Import from ~/.ssh/config';
+        importBtn.append(icon('download', 14), document.createTextNode('Import'));
+        importBtn.onclick = () => { void importSSHConfig(); };
+        actions.append(newBtn, importBtn);
+        el.appendChild(actions);
 
-    const list = document.createElement('div');
-    list.className = 'sb-list';
-    list.id = 'sb-list';
-    el.appendChild(list);
-    renderList();
+        listEl = document.createElement('div');
+        listEl.className = 'sb-list';
+        listEl.id = 'sb-list';
+        el.appendChild(listEl);
+    }
+    renderList(false);
 }
 
-let filterText = '';
-let collapsed = new Set<string>();
+function sidebarSig(): string {
+    return JSON.stringify([
+        state.hosts.map(h => [h.id, h.name, h.address, h.user, h.port, h.group, h.color]),
+        state.keys.map(k => [k.path, k.comment, k.type, k.fingerprint, k.encrypted, k.source]),
+        state.tabs.map(t => [t.key, t.hostId, t.connected]),
+        state.activeKey,
+        filterText,
+    ]);
+}
 
-function renderList() {
-    const list = document.getElementById('sb-list');
-    if (!list) return;
-    list.innerHTML = '';
+function renderList(force: boolean) {
+    if (!listEl) return;
+    const sig = sidebarSig();
+    if (!force && sig === lastSig) return;
+    lastSig = sig;
+    listEl.innerHTML = '';
     const q = filterText.trim().toLowerCase();
     const hosts = state.hosts.filter(h =>
         !q || [h.name, h.address, h.user, h.group].some(v => (v || '').toLowerCase().includes(q))
@@ -62,7 +81,7 @@ function renderList() {
         empty.textContent = state.hosts.length === 0
             ? 'No hosts yet. Add one or import your ssh config.'
             : 'No hosts match your search.';
-        list.appendChild(empty);
+        listEl.appendChild(empty);
     } else {
         const groups = new Map<string, typeof hosts>();
         for (const h of hosts) {
@@ -91,13 +110,13 @@ function renderList() {
             head.appendChild(count);
             head.onclick = () => {
                 if (collapsed.has(group)) collapsed.delete(group); else collapsed.add(group);
-                renderList();
+                renderList(true);
             };
             section.appendChild(head);
             if (!isCollapsed) {
                 for (const h of items) section.appendChild(hostRow(h));
             }
-            list.appendChild(section);
+            listEl.appendChild(section);
         }
     }
 
@@ -117,7 +136,7 @@ function renderList() {
     keyHead.appendChild(kcount);
     keyHead.onclick = () => {
         if (collapsed.has('__keys__')) collapsed.delete('__keys__'); else collapsed.add('__keys__');
-        renderList();
+        renderList(true);
     };
     keySection.appendChild(keyHead);
     if (!keyCollapsed) {
@@ -135,18 +154,35 @@ function renderList() {
             const base = k.path.split(/[\\/]/).pop() || k.path;
             const label = isAgent ? 'agent: ' + (k.comment || k.type || 'key') : base;
             row.dataset.tip = [isAgent ? 'ssh-agent' : k.path, k.fingerprint, k.comment].filter(Boolean).join('\n');
-            const ic = icon(isAgent ? 'server' : 'file-key', 13);
+            const top = document.createElement('div');
+            top.className = 'kr-top';
+            top.appendChild(icon(isAgent ? 'server' : 'file-key', 13));
             const nameEl = document.createElement('span');
             nameEl.className = 'kname';
             nameEl.textContent = label;
-            const meta = document.createElement('span');
+            top.appendChild(nameEl);
+            const meta = document.createElement('div');
             meta.className = 'kmeta';
             meta.textContent = [k.type, k.fingerprint ? k.fingerprint.slice(0, 24) + '…' : '', k.encrypted ? 'encrypted' : ''].filter(Boolean).join(' · ');
-            row.append(ic, nameEl, meta);
+            row.append(top, meta);
             keySection.appendChild(row);
         }
     }
-    list.appendChild(keySection);
+    listEl.appendChild(keySection);
+}
+
+function hostAddress(h: (typeof state.hosts)[number]): string {
+    return h.user + '@' + h.address + (h.port && h.port !== 22 ? ':' + h.port : '');
+}
+
+function hostMenuItems(h: (typeof state.hosts)[number]): MenuEntry[] {
+    return [
+        { label: 'Edit', icon: 'pencil', onSelect: () => openHostEditor(h) },
+        { label: 'Duplicate', icon: 'copy', onSelect: () => { void duplicateHost(h); } },
+        { label: 'Copy address', icon: 'clipboard', onSelect: () => { void navigator.clipboard.writeText(hostAddress(h)).catch(toastError); } },
+        { sep: true },
+        { label: 'Delete', icon: 'trash', danger: true, onSelect: () => { void deleteHost(h); } },
+    ];
 }
 
 function hostRow(h: (typeof state.hosts)[number]): HTMLElement {
@@ -155,39 +191,48 @@ function hostRow(h: (typeof state.hosts)[number]): HTMLElement {
     const connected = sessionOpenForHost(h.id);
     const activeTab = state.tabs.find((t: Tab) => t.hostId === h.id && t.key === state.activeKey && t.connected);
     if (activeTab) row.classList.add('active');
+    if (connected) row.classList.add('connected');
 
     const dot = document.createElement('span');
-    dot.className = 'dot' + (connected ? ' on' : '');
+    dot.className = 'hr-dot';
     if (h.color) dot.style.background = h.color;
     row.appendChild(dot);
 
-    const name = document.createElement('span');
-    name.className = 'hn';
+    const txt = document.createElement('div');
+    txt.className = 'hr-text';
+    const name = document.createElement('div');
+    name.className = 'hr-name';
     name.textContent = h.name || h.user + '@' + h.address;
-    name.style.maxWidth = '110px';
-    row.appendChild(name);
+    const sub = document.createElement('div');
+    sub.className = 'hr-sub';
+    sub.textContent = hostAddress(h);
+    txt.append(name, sub);
+    row.appendChild(txt);
 
-    const sub = document.createElement('span');
-    sub.className = 'hs';
-    sub.textContent = h.user + '@' + h.address + (h.port && h.port !== 22 ? ':' + h.port : '');
-    row.appendChild(sub);
+    if (connected) {
+        const live = document.createElement('span');
+        live.className = 'hr-live';
+        live.dataset.tip = 'Connected';
+        row.appendChild(live);
+    }
 
     const actions = document.createElement('span');
     actions.className = 'row-actions';
-    const mk = (ic: string, tip: string, fn: () => void, danger = false) => {
-        const b = document.createElement('button');
-        b.className = 'row-act' + (danger ? ' danger' : '');
-        b.dataset.tip = tip;
-        b.appendChild(icon(ic, 14));
-        b.onclick = ev => { ev.stopPropagation(); fn(); };
-        return b;
+    const connectBtn = document.createElement('button');
+    connectBtn.className = 'row-act';
+    connectBtn.dataset.tip = 'Connect';
+    connectBtn.appendChild(icon('plug', 14));
+    connectBtn.onclick = ev => { ev.stopPropagation(); void connectHost(h); };
+    const moreBtn = document.createElement('button');
+    moreBtn.className = 'row-act';
+    moreBtn.dataset.tip = 'More';
+    moreBtn.appendChild(icon('more-horizontal', 14));
+    moreBtn.onclick = ev => {
+        ev.stopPropagation();
+        const r = moreBtn.getBoundingClientRect();
+        showMenuAt(hostMenuItems(h), r.left - 9.5 * 16, r.bottom + 4);
     };
-    actions.append(
-        mk('plug', 'Connect', () => { void connectHost(h); }),
-        mk('pencil', 'Edit', () => openHostEditor(h)),
-        mk('copy', 'Duplicate', () => { void duplicateHost(h); }),
-        mk('trash', 'Delete', () => { void deleteHost(h); }, true),
-    );
+    actions.append(connectBtn, moreBtn);
     row.appendChild(actions);
 
     row.onclick = ev => {
@@ -198,6 +243,9 @@ function hostRow(h: (typeof state.hosts)[number]): HTMLElement {
         } else {
             void connectHost(h);
         }
+    };
+    row.oncontextmenu = ev => {
+        contextMenuAt(hostMenuItems(h), ev);
     };
     return row;
 }
