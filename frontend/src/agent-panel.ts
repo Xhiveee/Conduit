@@ -266,7 +266,7 @@ function updateChrome() {
         } else {
             chipEl.appendChild(icon('plus', 11));
             const sp = document.createElement('span');
-            sp.textContent = 'Attach';
+            sp.textContent = 'Attach to server';
             chipEl.appendChild(sp);
             chipEl.classList.remove('attached');
             chipEl.onclick = ev => {
