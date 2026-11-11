@@ -31,7 +31,11 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	app := NewApp(store)
+	chats, err := NewChatStore()
+	if err != nil {
+		fatal(err)
+	}
+	app := NewApp(store, chats)
 	err = wails.Run(&options.App{
 		Title:     "Conduit",
 		Width:     1360,

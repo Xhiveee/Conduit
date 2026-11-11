@@ -177,7 +177,7 @@ func TestE2EAgentRunCommand(t *testing.T) {
 	})
 	configureAITestStore(t, store, srv.URL, false)
 	app, events := agentAppWith(store, mgr)
-	if err := app.AgentSend("run echo agent-ok", sid); err != nil {
+	if err := app.AgentSend("", "run echo agent-ok", sid); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "agent to finish", func() bool { return agentBusyFalse(events) })

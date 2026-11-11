@@ -31,14 +31,6 @@ type Host struct {
 	Quick         bool   `json:"-"`
 }
 
-type Theme struct {
-	ID       string            `json:"id"`
-	Name     string            `json:"name"`
-	Builtin  bool              `json:"builtin"`
-	UI       map[string]string `json:"ui"`
-	Terminal map[string]string `json:"terminal"`
-}
-
 type AISettings struct {
 	BaseURL         string `json:"baseUrl"`
 	APIKey          string `json:"apiKey"`
@@ -46,11 +38,11 @@ type AISettings struct {
 	ApproveCommands bool   `json:"approveCommands"`
 	MaxSteps        int    `json:"maxSteps"`
 	Instructions    string `json:"instructions"`
+	ContextWindow   int    `json:"contextWindow"`
 }
 
 type Settings struct {
 	ThemeID         string     `json:"themeId"`
-	CustomThemes    []Theme    `json:"customThemes"`
 	FontFamily      string     `json:"fontFamily"`
 	FontSize        int        `json:"fontSize"`
 	FontWeight      int        `json:"fontWeight"`
@@ -68,7 +60,6 @@ type Settings struct {
 	SidebarVisible  bool       `json:"sidebarVisible"`
 	AgentVisible    bool       `json:"agentVisible"`
 	AgentSide       string     `json:"agentSide"`
-	CustomCSS       string     `json:"customCss"`
 	AI              AISettings `json:"ai"`
 }
 
@@ -119,6 +110,7 @@ func defaultSettings() Settings {
 			Model:           "gpt-4.1",
 			ApproveCommands: true,
 			MaxSteps:        30,
+			ContextWindow:   128000,
 		},
 	}
 }
@@ -164,7 +156,7 @@ func mergeSettings(def, cur Settings, m map[string]interface{}) Settings {
 	ai, _ := m["ai"].(map[string]interface{})
 	hasAI := func(k string) bool { _, ok := ai[k]; return ok }
 	out := cur
-	if !has("themeId") || out.ThemeID == "" {
+	if !has("themeId") || out.ThemeID == "" || !builtinThemeIDs[out.ThemeID] {
 		out.ThemeID = def.ThemeID
 	}
 	if !has("fontFamily") || out.FontFamily == "" || out.FontFamily == legacyFontFamily {
@@ -218,9 +210,6 @@ func mergeSettings(def, cur Settings, m map[string]interface{}) Settings {
 	if !has("agentSide") || out.AgentSide == "" {
 		out.AgentSide = def.AgentSide
 	}
-	if !has("customCss") {
-		out.CustomCSS = def.CustomCSS
-	}
 	a := out.AI
 	if !hasAI("baseUrl") || a.BaseURL == "" {
 		a.BaseURL = def.AI.BaseURL
@@ -239,6 +228,9 @@ func mergeSettings(def, cur Settings, m map[string]interface{}) Settings {
 	}
 	if !hasAI("instructions") {
 		a.Instructions = def.AI.Instructions
+	}
+	if !hasAI("contextWindow") || a.ContextWindow == 0 {
+		a.ContextWindow = def.AI.ContextWindow
 	}
 	out.AI = a
 	return out

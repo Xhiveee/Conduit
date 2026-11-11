@@ -49,6 +49,11 @@ type chatResponse struct {
 		Message      chatMessage `json:"message"`
 		FinishReason string      `json:"finish_reason"`
 	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
@@ -65,9 +70,9 @@ func newLLMTool(name, description, parameters string) llmTool {
 	return t
 }
 
-func chatCompletion(ctx context.Context, cfg AISettings, messages []chatMessage, tools []llmTool) (*chatMessage, error) {
+func chatCompletion(ctx context.Context, cfg AISettings, messages []chatMessage, tools []llmTool) (*chatMessage, *ChatUsage, error) {
 	if cfg.APIKey == "" && strings.Contains(cfg.BaseURL, "api.openai.com") {
-		return nil, fmt.Errorf("API key is required for api.openai.com")
+		return nil, nil, fmt.Errorf("API key is required for api.openai.com")
 	}
 	base := strings.TrimRight(cfg.BaseURL, "/")
 	reqBody := chatRequest{
@@ -78,11 +83,11 @@ func chatCompletion(ctx context.Context, cfg AISettings, messages []chatMessage,
 	}
 	raw, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/chat/completions", bytes.NewReader(raw))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if cfg.APIKey != "" {
@@ -90,29 +95,38 @@ func chatCompletion(ctx context.Context, cfg AISettings, messages []chatMessage,
 	}
 	resp, err := llmHTTP.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8*1024*1024))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var parsed chatResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("invalid response from LLM endpoint: %s", truncateMiddle(string(body), 500))
+		return nil, nil, fmt.Errorf("invalid response from LLM endpoint: %s", truncateMiddle(string(body), 500))
 	}
 	if resp.StatusCode != http.StatusOK {
 		msg := fmt.Sprintf("LLM request failed: HTTP %d", resp.StatusCode)
 		if parsed.Error != nil && parsed.Error.Message != "" {
 			msg += ": " + parsed.Error.Message
 		}
-		return nil, fmt.Errorf("%s", msg)
+		return nil, nil, fmt.Errorf("%s", msg)
 	}
 	if parsed.Error != nil {
-		return nil, fmt.Errorf("LLM error: %s", parsed.Error.Message)
+		return nil, nil, fmt.Errorf("LLM error: %s", parsed.Error.Message)
 	}
 	if len(parsed.Choices) == 0 {
-		return nil, fmt.Errorf("LLM returned no choices")
+		return nil, nil, fmt.Errorf("LLM returned no choices")
 	}
-	return &parsed.Choices[0].Message, nil
+	var usage *ChatUsage
+	if parsed.Usage != nil {
+		usage = &ChatUsage{
+			PromptTokens:     parsed.Usage.PromptTokens,
+			CompletionTokens: parsed.Usage.CompletionTokens,
+			TotalTokens:      parsed.Usage.TotalTokens,
+			LastPromptTokens: parsed.Usage.PromptTokens,
+		}
+	}
+	return &parsed.Choices[0].Message, usage, nil
 }

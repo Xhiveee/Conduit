@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -10,13 +11,14 @@ import (
 type App struct {
 	ctx      context.Context
 	store    *Store
+	chats    *ChatStore
 	sessions *SessionManager
 	agent    *Agent
 	emitFn   func(name string, args ...interface{})
 }
 
-func NewApp(store *Store) *App {
-	return &App{store: store}
+func NewApp(store *Store, chats *ChatStore) *App {
+	return &App{store: store, chats: chats}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -24,6 +26,7 @@ func (a *App) startup(ctx context.Context) {
 	a.emitFn = func(name string, args ...interface{}) {
 		runtime.EventsEmit(ctx, name, args...)
 	}
+	a.chats.setEmit(a.emitFn)
 	a.sessions = NewSessionManager(a.store)
 	a.sessions.emit = a.emitFn
 	a.agent = NewAgent(a)
@@ -46,7 +49,11 @@ func (a *App) SaveHost(h Host) (Host, error) {
 }
 
 func (a *App) DeleteHost(id string) error {
-	return a.store.DeleteHost(id)
+	if err := a.store.DeleteHost(id); err != nil {
+		return err
+	}
+	a.chats.DetachHost(id)
+	return nil
 }
 
 func (a *App) GetSettings() Settings {
@@ -111,16 +118,49 @@ func (a *App) ListSessions() []SessionInfo {
 	return a.sessions.ListSessions()
 }
 
-func (a *App) AgentSend(text, activeSessionID string) error {
-	return a.agent.send(text, activeSessionID)
+func (a *App) ListChats() []ChatSummary {
+	return a.chats.List()
 }
 
-func (a *App) AgentStop() {
-	a.agent.stop()
+func (a *App) GetChat(id string) (ChatSummary, []ChatLogEntry, error) {
+	c, ok := a.chats.Get(id)
+	if !ok {
+		return ChatSummary{}, nil, fmt.Errorf("chat not found")
+	}
+	return c.ChatSummary, c.Log, nil
 }
 
-func (a *App) AgentReset() {
-	a.agent.reset()
+func (a *App) CreateChat(hostID string) (ChatSummary, error) {
+	return a.chats.Create(hostID)
+}
+
+func (a *App) RenameChat(id, title string) (ChatSummary, error) {
+	return a.chats.Rename(id, title)
+}
+
+func (a *App) SetChatGroup(id, group string) (ChatSummary, error) {
+	return a.chats.SetGroup(id, group)
+}
+
+func (a *App) AttachChat(id, hostID string) (ChatSummary, error) {
+	return a.chats.Attach(id, hostID)
+}
+
+func (a *App) ArchiveChat(id string, archived bool) (ChatSummary, error) {
+	return a.chats.Archive(id, archived)
+}
+
+func (a *App) DeleteChat(id string) error {
+	a.agent.stop(id)
+	return a.chats.Delete(id)
+}
+
+func (a *App) AgentSend(chatID, text, activeSessionID string) error {
+	return a.agent.send(chatID, text, activeSessionID)
+}
+
+func (a *App) AgentStop(chatID string) {
+	a.agent.stop(chatID)
 }
 
 func (a *App) AgentApprove(callID string, approved bool) {
@@ -128,6 +168,9 @@ func (a *App) AgentApprove(callID string, approved bool) {
 }
 
 func (a *App) setTheme(id string) error {
+	if !builtinThemeIDs[id] {
+		return fmt.Errorf("unknown theme %q", id)
+	}
 	st := a.store.GetSettings()
 	st.ThemeID = id
 	if err := a.store.SaveSettings(st); err != nil {
@@ -166,6 +209,9 @@ func (a *App) applyUISettingsPatch(p uiSettingsPatch) (Settings, error) {
 	if p.ThemeID != nil {
 		st.ThemeID = *p.ThemeID
 	}
+	if p.ContextWindow != nil {
+		st.AI.ContextWindow = *p.ContextWindow
+	}
 	if err := a.store.SaveSettings(st); err != nil {
 		return st, err
 	}
@@ -179,8 +225,14 @@ type ThemeInfo struct {
 	Builtin bool   `json:"builtin"`
 }
 
+var builtinThemeIDs = map[string]bool{
+	"black": true, "oled": true, "dark": true, "graphite": true,
+	"nord": true, "solarized-dark": true, "light": true,
+}
+
 var builtinThemeList = []ThemeInfo{
 	{ID: "black", Name: "Black", Builtin: true},
+	{ID: "oled", Name: "Pure Black", Builtin: true},
 	{ID: "dark", Name: "Dark", Builtin: true},
 	{ID: "graphite", Name: "Graphite", Builtin: true},
 	{ID: "nord", Name: "Nord", Builtin: true},
@@ -191,8 +243,5 @@ var builtinThemeList = []ThemeInfo{
 func (a *App) listThemes() []ThemeInfo {
 	out := make([]ThemeInfo, len(builtinThemeList))
 	copy(out, builtinThemeList)
-	for _, t := range a.store.GetSettings().CustomThemes {
-		out = append(out, ThemeInfo{ID: t.ID, Name: t.Name, Builtin: false})
-	}
 	return out
 }

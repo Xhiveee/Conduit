@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 )
 
 type agentMessage struct {
@@ -13,26 +14,15 @@ type agentMessage struct {
 	Content string `json:"content"`
 }
 
-type agentToolEvent struct {
-	CallID string `json:"callId"`
-	Name   string `json:"name"`
-	Args   string `json:"args"`
-	Status string `json:"status"`
-	Result string `json:"result"`
-}
-
 type Agent struct {
-	app      *App
-	mu       sync.Mutex
-	messages []chatMessage
-	cancel   context.CancelFunc
-	running  bool
-	gen      int
-	pending  map[string]chan bool
+	app     *App
+	mu      sync.Mutex
+	runs    map[string]context.CancelFunc
+	pending map[string]chan bool
 }
 
 func NewAgent(app *App) *Agent {
-	return &Agent{app: app, pending: make(map[string]chan bool)}
+	return &Agent{app: app, runs: make(map[string]context.CancelFunc), pending: make(map[string]chan bool)}
 }
 
 const agentSystemPrompt = `You operate Conduit, a desktop SSH client. You can run commands inside the user's live terminal sessions - the user sees everything you type in real time and can also type in the same session at any moment.
@@ -55,48 +45,87 @@ var agentTools = []llmTool{
 	newLLMTool("read_screen", "Read the last lines of a session's terminal (stripped text).", `{"type":"object","properties":{"session_id":{"type":"string"},"lines":{"type":"integer"}},"required":["session_id"]}`),
 	newLLMTool("disconnect", "Close a session.", `{"type":"object","properties":{"session_id":{"type":"string"}},"required":["session_id"]}`),
 	newLLMTool("focus_session", "Bring a session's tab to the front.", `{"type":"object","properties":{"session_id":{"type":"string"}},"required":["session_id"]}`),
-	newLLMTool("set_theme", "Switch the UI theme. Builtin ids: black, dark, graphite, nord, solarized-dark, light. Custom theme ids also work.", `{"type":"object","properties":{"theme_id":{"type":"string"}},"required":["theme_id"]}`),
-	newLLMTool("update_settings", "Update UI settings live: fontSize, fontFamily, lineHeight, cursorStyle, uiScale, sidebarVisible, agentVisible, agentSide, themeId.", `{"type":"object","properties":{"settings":{"type":"object","properties":{"fontSize":{"type":"integer"},"fontFamily":{"type":"string"},"lineHeight":{"type":"number"},"cursorStyle":{"type":"string"},"uiScale":{"type":"number"},"sidebarVisible":{"type":"boolean"},"agentVisible":{"type":"boolean"},"agentSide":{"type":"string","enum":["left","right"]},"themeId":{"type":"string"}}}},"required":["settings"]}`),
+	newLLMTool("set_theme", "Switch the UI theme. Builtin ids: black, oled, dark, graphite, nord, solarized-dark, light.", `{"type":"object","properties":{"theme_id":{"type":"string"}},"required":["theme_id"]}`),
+	newLLMTool("update_settings", "Update UI settings live: fontSize, fontFamily, lineHeight, cursorStyle, uiScale, sidebarVisible, agentVisible, agentSide, themeId, contextWindow.", `{"type":"object","properties":{"settings":{"type":"object","properties":{"fontSize":{"type":"integer"},"fontFamily":{"type":"string"},"lineHeight":{"type":"number"},"cursorStyle":{"type":"string"},"uiScale":{"type":"number"},"sidebarVisible":{"type":"boolean"},"agentVisible":{"type":"boolean"},"agentSide":{"type":"string","enum":["left","right"]},"themeId":{"type":"string"},"contextWindow":{"type":"integer"}}}},"required":["settings"]}`),
 	newLLMTool("list_keys", "List discovered SSH keys (files in ~/.ssh and agent keys).", `{"type":"object","properties":{}}`),
 	newLLMTool("list_themes", "List available themes with id, name and builtin flag.", `{"type":"object","properties":{}}`),
 }
 
-func (a *Agent) send(text, activeSessionID string) error {
+func (a *Agent) send(chatID, text, activeSessionID string) error {
+	cs := a.app.chats
+	if chatID == "" {
+		s, err := cs.Create("")
+		if err != nil {
+			return err
+		}
+		chatID = s.ID
+	}
+	chat, ok := cs.Get(chatID)
+	if !ok {
+		return fmt.Errorf("chat not found")
+	}
 	a.mu.Lock()
-	if a.running {
+	if _, busy := a.runs[chatID]; busy {
 		a.mu.Unlock()
 		return fmt.Errorf("agent is busy")
 	}
-	a.running = true
 	cfg := a.app.store.GetSettings().AI
-	userMsg := chatMessage{Role: "user", Content: text + a.contextSuffix(activeSessionID)}
-	a.messages = append(a.messages, userMsg)
-	gen := a.gen
-	ctx, cancelFn := context.WithCancel(context.Background())
-	a.cancel = cancelFn
+	content := text + a.contextSuffix(chat, activeSessionID)
+	userMsg := chatMessage{Role: "user", Content: content}
+	messages := append(append([]chatMessage{}, chat.Messages...), userMsg)
+	ctx, cancel := context.WithCancel(context.Background())
+	a.runs[chatID] = cancel
 	a.mu.Unlock()
-	a.app.emit("agent:message", agentMessage{Role: "user", Content: text})
-	a.app.emit("agent:busy", true)
-	go a.run(ctx, cfg, gen)
+
+	entry := ChatLogEntry{Kind: "user", Content: text, TS: time.Now().UnixMilli()}
+	if _, err := cs.appendLog(chatID, entry); err != nil {
+		a.mu.Lock()
+		delete(a.runs, chatID)
+		a.mu.Unlock()
+		cancel()
+		return err
+	}
+	if first := strings.SplitN(text, "\n", 2)[0]; chat.Title == "" {
+		t := []rune(strings.TrimSpace(first))
+		if len(t) > 60 {
+			t = t[:60]
+		}
+		cs.setTitleIfEmpty(chatID, string(t))
+	}
+	a.app.emit("agent:message", chatID, entry)
+	cs.setBusy(chatID, true)
+	a.app.emit("agent:busy", chatID, true)
+	go a.run(ctx, chatID, cfg, messages)
 	return nil
 }
 
-func (a *Agent) contextSuffix(activeSessionID string) string {
+func (a *Agent) contextSuffix(chat *Chat, activeSessionID string) string {
 	sessions := a.app.sessions.ListSessions()
 	var b strings.Builder
 	b.WriteString("\n\n[Context: ")
 	if activeSessionID != "" {
+		found := false
 		for _, s := range sessions {
 			if s.ID == activeSessionID {
 				fmt.Fprintf(&b, "active session %s (%q)", s.ID, s.Title)
+				found = true
 				break
 			}
 		}
-		if !strings.Contains(b.String(), activeSessionID) {
+		if !found {
 			fmt.Fprintf(&b, "active session %s", activeSessionID)
 		}
 	} else {
 		b.WriteString("no active session")
+	}
+	if chat.HostID != "" {
+		if h, ok := a.app.store.HostByID(chat.HostID); ok {
+			name := h.Name
+			if name == "" {
+				name = h.User + "@" + h.Address
+			}
+			fmt.Fprintf(&b, "; this chat is attached to host %q (id %s). Work on that host; if no session for it is open, connect to it first.", name, h.ID)
+		}
 	}
 	if len(sessions) > 0 {
 		b.WriteString("; open sessions:")
@@ -108,31 +137,49 @@ func (a *Agent) contextSuffix(activeSessionID string) string {
 	return b.String()
 }
 
-func (a *Agent) run(ctx context.Context, cfg AISettings, gen int) {
-	messages := append([]chatMessage{{Role: "system", Content: agentSystemPrompt + instructionsSuffix(cfg.Instructions)}}, a.messagesSnapshot()...)
+func (a *Agent) run(ctx context.Context, chatID string, cfg AISettings, messages []chatMessage) {
+	defer func() {
+		a.mu.Lock()
+		delete(a.runs, chatID)
+		a.mu.Unlock()
+		a.app.chats.setBusy(chatID, false)
+		a.app.emit("agent:busy", chatID, false)
+	}()
+	full := append([]chatMessage{{Role: "system", Content: agentSystemPrompt + instructionsSuffix(cfg.Instructions)}}, messages...)
 	maxSteps := cfg.MaxSteps
 	if maxSteps <= 0 {
 		maxSteps = 30
 	}
 	for step := 0; step < maxSteps; step++ {
-		msg, err := chatCompletion(ctx, cfg, messages, agentTools)
+		a.app.emit("agent:thinking", chatID, true)
+		msg, usage, err := chatCompletion(ctx, cfg, full, agentTools)
+		a.app.emit("agent:thinking", chatID, false)
 		if err != nil {
 			if ctx.Err() == nil {
-				a.app.emit("agent:error", err.Error())
+				a.logNote(chatID, "error: "+err.Error())
+				a.app.emit("agent:error", chatID, err.Error())
+			}
+			return
+		}
+		if usage != nil {
+			a.app.chats.addUsage(chatID, *usage)
+			if s, ok := a.app.chats.GetSummary(chatID); ok {
+				a.app.emit("agent:usage", chatID, s.Usage)
+			}
+		}
+		full = append(full, *msg)
+		if len(msg.ToolCalls) == 0 {
+			if strings.TrimSpace(msg.Content) != "" {
+				a.logEntry(chatID, ChatLogEntry{Kind: "assistant", Content: msg.Content})
 			}
 			break
 		}
-		messages = append(messages, *msg)
-		if len(msg.ToolCalls) == 0 {
-			a.app.emit("agent:message", agentMessage{Role: "assistant", Content: msg.Content})
-			break
-		}
 		if strings.TrimSpace(msg.Content) != "" {
-			a.app.emit("agent:message", agentMessage{Role: "assistant", Content: msg.Content})
+			a.logEntry(chatID, ChatLogEntry{Kind: "assistant", Content: msg.Content})
 		}
 		for _, call := range msg.ToolCalls {
-			result := a.execTool(ctx, cfg, call)
-			messages = append(messages, chatMessage{
+			result := a.execTool(ctx, chatID, cfg, call)
+			full = append(full, chatMessage{
 				Role:       "tool",
 				ToolCallID: call.ID,
 				Name:       call.Function.Name,
@@ -140,22 +187,51 @@ func (a *Agent) run(ctx context.Context, cfg AISettings, gen int) {
 			})
 		}
 	}
-	a.mu.Lock()
-	if a.gen == gen {
-		a.messages = messages[1:]
-		a.running = false
+	if err := a.app.chats.setMessages(chatID, full[1:]); err != nil {
+		a.app.emit("agent:error", chatID, err.Error())
 	}
-	busy := a.running
-	a.mu.Unlock()
-	a.app.emit("agent:busy", busy)
 }
 
-func (a *Agent) messagesSnapshot() []chatMessage {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	out := make([]chatMessage, len(a.messages))
-	copy(out, a.messages)
-	return out
+func (a *Agent) logEntry(chatID string, e ChatLogEntry) {
+	if _, err := a.app.chats.appendLog(chatID, e); err != nil {
+		a.app.emit("agent:error", chatID, err.Error())
+		return
+	}
+	if e.Kind == "assistant" {
+		a.app.emit("agent:message", chatID, e)
+	}
+}
+
+func (a *Agent) logNote(chatID, text string) {
+	e := ChatLogEntry{Kind: "note", Content: text, TS: time.Now().UnixMilli()}
+	if _, err := a.app.chats.appendLog(chatID, e); err == nil {
+		a.app.emit("agent:message", chatID, e)
+	}
+}
+
+func (a *Agent) logTool(chatID string, e ChatLogEntry) {
+	if _, err := a.app.chats.appendLog(chatID, e); err != nil {
+		a.app.emit("agent:error", chatID, err.Error())
+		return
+	}
+	a.app.emit("agent:tool", chatID, e)
+}
+
+func (a *Agent) updateTool(chatID, callID, status, result string) {
+	e := ChatLogEntry{Kind: "tool", CallID: callID, Status: status, Result: result, TS: time.Now().UnixMilli()}
+	if nameArgs, ok := a.app.chats.Get(chatID); ok {
+		for i := len(nameArgs.Log) - 1; i >= 0; i-- {
+			if nameArgs.Log[i].Kind == "tool" && nameArgs.Log[i].CallID == callID {
+				e.Name = nameArgs.Log[i].Name
+				e.Args = nameArgs.Log[i].Args
+				break
+			}
+		}
+	}
+	if err := a.app.chats.updateTool(chatID, callID, status, result); err != nil {
+		a.app.emit("agent:error", chatID, err.Error())
+	}
+	a.app.emit("agent:tool", chatID, e)
 }
 
 func instructionsSuffix(inst string) string {
@@ -165,25 +241,12 @@ func instructionsSuffix(inst string) string {
 	return "\n\nAdditional instructions from the user:\n" + inst
 }
 
-func (a *Agent) stop() {
+func (a *Agent) stop(chatID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.cancel != nil {
-		a.cancel()
-		a.cancel = nil
+	if cancel, ok := a.runs[chatID]; ok {
+		cancel()
 	}
-}
-
-func (a *Agent) reset() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.gen++
-	a.messages = nil
-	if a.cancel != nil {
-		a.cancel()
-		a.cancel = nil
-	}
-	a.running = false
 }
 
 func (a *Agent) approve(callID string, approved bool) {
@@ -224,34 +287,33 @@ func (a *Agent) waitApproval(ctx context.Context, callID string) (bool, error) {
 	}
 }
 
-func (a *Agent) execTool(ctx context.Context, cfg AISettings, call llmToolCall) string {
+func (a *Agent) execTool(ctx context.Context, chatID string, cfg AISettings, call llmToolCall) string {
 	name := call.Function.Name
 	raw := call.Function.Arguments
 	if strings.TrimSpace(raw) == "" {
 		raw = "{}"
 	}
-	emit := func(status, result string) {
-		a.app.emit("agent:tool", agentToolEvent{CallID: call.ID, Name: name, Args: raw, Status: status, Result: result})
-	}
+	toolEntry := ChatLogEntry{Kind: "tool", CallID: call.ID, Name: name, Args: raw, TS: time.Now().UnixMilli()}
 	if needsApproval(name) && cfg.ApproveCommands {
-		emit("pending_approval", "")
+		toolEntry.Status = "pending_approval"
+		a.logTool(chatID, toolEntry)
 		ok, err := a.waitApproval(ctx, call.ID)
 		if err != nil {
-			emit("error", err.Error())
+			a.updateTool(chatID, call.ID, "error", err.Error())
 			return "error: " + err.Error()
 		}
 		if !ok {
-			emit("rejected", "user rejected")
+			a.updateTool(chatID, call.ID, "rejected", "user rejected")
 			return "user rejected"
 		}
 	}
-	emit("running", "")
+	a.updateTool(chatID, call.ID, "running", "")
 	result, err := a.dispatchTool(ctx, name, json.RawMessage(raw))
 	if err != nil {
-		emit("error", err.Error())
+		a.updateTool(chatID, call.ID, "error", err.Error())
 		return "error: " + err.Error()
 	}
-	emit("done", result)
+	a.updateTool(chatID, call.ID, "done", result)
 	return result
 }
 
@@ -279,7 +341,7 @@ func (a *Agent) dispatchTool(ctx context.Context, name string, args json.RawMess
 		if in.ID == "" {
 			return "", fmt.Errorf("id is required")
 		}
-		if err := a.app.store.DeleteHost(in.ID); err != nil {
+		if err := a.app.DeleteHost(in.ID); err != nil {
 			return "", err
 		}
 		return `{"deleted":true}`, nil
@@ -496,4 +558,5 @@ type uiSettingsPatch struct {
 	AgentVisible   *bool    `json:"agentVisible"`
 	AgentSide      *string  `json:"agentSide"`
 	ThemeID        *string  `json:"themeId"`
+	ContextWindow  *int     `json:"contextWindow"`
 }

@@ -57,7 +57,11 @@ func llmTextResp(text string) string {
 }
 
 func agentAppWith(store *Store, mgr *SessionManager) (*App, func() []recordedEvent) {
-	app := NewApp(store)
+	chats, err := NewChatStore()
+	if err != nil {
+		panic(err)
+	}
+	app := NewApp(store, chats)
 	var mu sync.Mutex
 	var events []recordedEvent
 	app.emitFn = func(name string, args ...interface{}) {
@@ -65,6 +69,7 @@ func agentAppWith(store *Store, mgr *SessionManager) (*App, func() []recordedEve
 		events = append(events, recordedEvent{name: name, args: args})
 		mu.Unlock()
 	}
+	app.chats.setEmit(app.emitFn)
 	app.sessions = mgr
 	if mgr != nil {
 		mgr.emit = app.emitFn
@@ -93,8 +98,8 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 
 func agentBusyFalse(events func() []recordedEvent) bool {
 	for _, e := range events() {
-		if e.name == "agent:busy" && len(e.args) > 0 {
-			if b, ok := e.args[0].(bool); ok && !b {
+		if e.name == "agent:busy" && len(e.args) > 1 {
+			if b, ok := e.args[1].(bool); ok && !b {
 				return true
 			}
 		}
@@ -146,7 +151,7 @@ func TestAgentToolLoop(t *testing.T) {
 	}
 	configureAITestStore(t, store, srv.URL, false)
 	app, events := agentAppWith(store, NewSessionManager(store))
-	if err := app.AgentSend("check things", ""); err != nil {
+	if err := app.AgentSend("", "check things", ""); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "agent to finish", func() bool { return agentBusyFalse(events) })
@@ -169,8 +174,8 @@ func TestAgentToolLoop(t *testing.T) {
 	}
 	sawAssistant := false
 	for _, e := range events() {
-		if e.name == "agent:message" && len(e.args) > 0 {
-			if m, ok := e.args[0].(agentMessage); ok && m.Role == "assistant" && m.Content == "all done" {
+		if e.name == "agent:message" && len(e.args) > 1 {
+			if m, ok := e.args[1].(ChatLogEntry); ok && m.Kind == "assistant" && m.Content == "all done" {
 				sawAssistant = true
 			}
 		}
@@ -206,13 +211,13 @@ func TestAgentApprovalReject(t *testing.T) {
 	hostID = h.ID
 	configureAITestStore(t, store, srv.URL, true)
 	app, events := agentAppWith(store, NewSessionManager(store))
-	if err := app.AgentSend("delete that host", ""); err != nil {
+	if err := app.AgentSend("", "delete that host", ""); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, "pending approval", func() bool {
 		for _, e := range events() {
-			if e.name == "agent:tool" && len(e.args) > 0 {
-				if ev, ok := e.args[0].(agentToolEvent); ok && ev.CallID == "call_del" && ev.Status == "pending_approval" {
+			if e.name == "agent:tool" && len(e.args) > 1 {
+				if ev, ok := e.args[1].(ChatLogEntry); ok && ev.CallID == "call_del" && ev.Status == "pending_approval" {
 					return true
 				}
 			}
@@ -240,8 +245,8 @@ func TestAgentApprovalReject(t *testing.T) {
 	}
 	sawRejected := false
 	for _, e := range events() {
-		if e.name == "agent:tool" && len(e.args) > 0 {
-			if ev, ok := e.args[0].(agentToolEvent); ok && ev.CallID == "call_del" && ev.Status == "rejected" {
+		if e.name == "agent:tool" && len(e.args) > 1 {
+			if ev, ok := e.args[1].(ChatLogEntry); ok && ev.CallID == "call_del" && ev.Status == "rejected" {
 				sawRejected = true
 			}
 		}
