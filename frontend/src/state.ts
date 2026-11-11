@@ -39,6 +39,7 @@ export interface AgentMsg {
     role?: string;
     content?: string;
     tool?: ToolCard;
+    ts?: number;
 }
 
 export interface ToolCard {
@@ -174,11 +175,15 @@ export function chatTargetSession(chatId: string): string {
 
 export async function loadChat(id: string) {
     const v = chatView(id);
+    const baseLen = v.entries.length;
     try {
         const d = await App.GetChat(id);
         v.loaded = true;
+        const liveTail = v.entries.slice(baseLen);
         v.entries = [];
         v.tools.clear();
+        const seenCalls = new Set<string>();
+        const seenTs = new Set<string>();
         for (const e of d.log ?? []) {
             if (e.kind === 'tool') {
                 const cid = e.callId ?? '';
@@ -187,14 +192,27 @@ export async function loadChat(id: string) {
                     status: e.status || 'done', result: e.result ?? '', open: false,
                 };
                 v.tools.set(cid, t);
-                v.entries.push({ id: nextMsgId(), kind: 'tool', tool: t });
+                v.entries.push({ id: nextMsgId(), kind: 'tool', tool: t, ts: e.ts });
+                seenCalls.add(cid);
             } else {
                 v.entries.push({
                     id: nextMsgId(),
                     kind: e.kind === 'user' ? 'user' : e.kind === 'note' ? 'note' : 'assistant',
                     content: e.content,
+                    ts: e.ts,
                 });
+                seenTs.add(e.kind + ':' + e.ts);
             }
+        }
+        for (const m of liveTail) {
+            if (m.kind === 'tool' && m.tool) {
+                if (seenCalls.has(m.tool.callId)) continue;
+                seenCalls.add(m.tool.callId);
+                v.tools.set(m.tool.callId, m.tool);
+            } else if (m.ts !== undefined && seenTs.has(m.kind + ':' + m.ts)) {
+                continue;
+            }
+            v.entries.push(m);
         }
         const s = state.chatList.find(c => c.id === id);
         if (s) {
@@ -388,6 +406,7 @@ function wireEvents() {
             id: nextMsgId(),
             kind: e.kind === 'user' ? 'user' : e.kind === 'note' ? 'note' : 'assistant',
             content: e.content,
+            ts: e.ts,
         });
         notify();
     });
@@ -398,7 +417,7 @@ function wireEvents() {
         if (!t) {
             t = { callId: cid, name: e.name ?? '', args: e.args ?? '', status: '', result: '', open: false };
             v.tools.set(cid, t);
-            v.entries.push({ id: nextMsgId(), kind: 'tool', tool: t });
+            v.entries.push({ id: nextMsgId(), kind: 'tool', tool: t, ts: e.ts });
         }
         if (e.name) t.name = e.name;
         if (e.args !== undefined) t.args = e.args;

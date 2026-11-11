@@ -69,12 +69,10 @@ export function openSettings(initialSection?: string) {
     layout.append(nav, pane);
     body.appendChild(layout);
 
-    const closeDialog = openDialog(modal);
-    settingsClose = () => {
-        settingsClose = null;
-        showSection = null;
-        closeDialog();
-    };
+    const closeDialog = openDialog(modal, {
+        onClose: () => { settingsClose = null; showSection = null; },
+    });
+    settingsClose = () => closeDialog();
     closeBtn.onclick = () => settingsClose?.();
 
     const show = (sec: SettingsSection) => {
@@ -290,7 +288,7 @@ function renderAgentSection(pane: HTMLElement) {
     keyI.value = s.ai.apiKey;
     keyI.className = 'mono';
     keyI.style.width = '100%';
-    keyI.placeholder = 'sk-… (empty for local servers like Ollama)';
+    keyI.placeholder = 'Empty for local servers like Ollama';
     keyI.onchange = () => { ai().apiKey = keyI.value; persistAI(); };
     const keyF = document.createElement('div');
     keyF.className = 'field full';
@@ -343,7 +341,7 @@ function renderAgentSection(pane: HTMLElement) {
 
     const instI = document.createElement('textarea');
     instI.value = s.ai.instructions;
-    instI.placeholder = 'Extra instructions appended to the agent system prompt';
+    instI.placeholder = 'Extra instructions for the agent';
     instI.style.width = '100%';
     instI.onchange = () => { ai().instructions = instI.value; persistAI(); };
     const instF = document.createElement('div');
@@ -376,7 +374,7 @@ const KEYBOARD_SHORTCUTS: [string, string][] = [
 function renderKeyboard(pane: HTMLElement) {
     const g = group();
     const sub = document.createElement('div');
-    sub.className = 'sub';
+    sub.className = 'set-desc';
     sub.textContent = 'Shortcuts work from anywhere, including while the terminal has focus.';
     g.appendChild(sub);
     const list = document.createElement('div');

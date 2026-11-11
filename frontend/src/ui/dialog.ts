@@ -9,7 +9,7 @@ interface DialogEntry {
 
 const stack: DialogEntry[] = [];
 
-export function openDialog(modal: HTMLElement, opts?: { overlayClose?: boolean }): () => void {
+export function openDialog(modal: HTMLElement, opts?: { overlayClose?: boolean; onClose?: () => void }): () => void {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay no-drag';
     overlay.appendChild(modal);
@@ -23,6 +23,7 @@ export function openDialog(modal: HTMLElement, opts?: { overlayClose?: boolean }
         if (i < 0) return;
         stack.splice(i, 1);
         releaseLayer();
+        opts?.onClose?.();
         overlay.classList.add('closing');
         window.setTimeout(() => overlay.remove(), 140);
         const pf = entry.prevFocus as HTMLElement | null;
