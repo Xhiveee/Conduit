@@ -3,12 +3,12 @@ import type { main } from '../wailsjs/go/models';
 import { state, notify, refreshHosts } from './state';
 import { icon } from './icons';
 import { toastError } from './toast';
+import { uiSelect, uiNumber } from './ui';
+import { openDialog } from './ui/dialog';
 
-const COLORS = ['', '#7fd18b', '#6ea8fe', '#c792ea', '#f0a35e', '#e06c60', '#56b6c2', '#d9a441'];
+const COLORS = ['', '#86c294', '#7aa6da', '#b798d8', '#d6b26a', '#e07a6e', '#6fbfbf', '#d6a656'];
 
 export function openHostEditor(host: main.Host | null) {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
     const modal = document.createElement('div');
     modal.className = 'modal';
 
@@ -18,8 +18,8 @@ export function openHostEditor(host: main.Host | null) {
     h2.textContent = host ? 'Edit host' : 'New host';
     const closeBtn = document.createElement('button');
     closeBtn.className = 'x';
+    closeBtn.type = 'button';
     closeBtn.appendChild(icon('x', 15));
-    closeBtn.onclick = () => overlay.remove();
     head.append(h2, closeBtn);
     modal.appendChild(head);
 
@@ -54,11 +54,14 @@ export function openHostEditor(host: main.Host | null) {
     addrI.className = 'mono';
     field('Address', addrI);
 
-    const portI = document.createElement('input');
-    portI.type = 'number';
-    portI.value = String(host?.port || 22);
-    portI.min = '1';
-    portI.max = '65535';
+    let portVal = host?.port || 22;
+    const portI = uiNumber({
+        value: portVal,
+        min: 1,
+        max: 65535,
+        step: 1,
+        onChange: v => { portVal = v; },
+    });
     field('Port', portI);
 
     const userI = document.createElement('input');
@@ -66,34 +69,44 @@ export function openHostEditor(host: main.Host | null) {
     userI.placeholder = 'root';
     field('User', userI);
 
-    const authSel = document.createElement('select');
-    for (const [v, l] of [['agent', 'SSH agent'], ['key', 'Private key'], ['password', 'Password']] as const) {
-        const o = document.createElement('option');
-        o.value = v;
-        o.textContent = l;
-        authSel.appendChild(o);
-    }
-    authSel.value = host?.authMethod || 'agent';
+    let authVal = host?.authMethod || 'agent';
+    const authSel = uiSelect({
+        value: authVal,
+        options: [
+            { value: 'agent', label: 'SSH agent', description: 'Keys from ~/.ssh and the agent' },
+            { value: 'key', label: 'Private key', description: 'A key file on this machine' },
+            { value: 'password', label: 'Password', description: 'Password authentication' },
+        ],
+        onChange: v => {
+            authVal = v;
+            syncAuth();
+        },
+    });
     field('Auth method', authSel);
 
-    const keySel = document.createElement('select');
-    const customOpt = document.createElement('option');
-    customOpt.value = '__custom__';
-    customOpt.textContent = 'Custom path…';
-    keySel.appendChild(customOpt);
+    const keyOptions: { value: string; label: string; description?: string }[] = [
+        { value: '', label: 'Select a key…' },
+        { value: '__custom__', label: 'Custom path…', description: 'Enter a path manually' },
+    ];
     for (const k of state.keys.filter(k => k.source === 'file')) {
-        const o = document.createElement('option');
-        o.value = k.path;
-        o.textContent = (k.comment || k.type || k.path) + (k.encrypted ? ' (encrypted)' : '');
-        keySel.appendChild(o);
+        keyOptions.push({
+            value: k.path,
+            label: k.comment || k.type || k.path.split(/[\\/]/).pop() || k.path,
+            description: (k.encrypted ? 'encrypted · ' : '') + (k.fingerprint ? k.fingerprint.slice(0, 20) + '…' : ''),
+        });
     }
     if (host?.keyPath && !state.keys.some(k => k.path === host.keyPath)) {
-        const o = document.createElement('option');
-        o.value = host.keyPath;
-        o.textContent = host.keyPath;
-        keySel.appendChild(o);
+        keyOptions.push({ value: host.keyPath, label: host.keyPath });
     }
-    keySel.value = host?.keyPath || '';
+    let keyVal = host?.keyPath || '';
+    const keySel = uiSelect({
+        value: keyVal,
+        options: keyOptions,
+        onChange: v => {
+            keyVal = v;
+            syncAuth();
+        },
+    });
     const keyField = field('Key file', keySel);
 
     const keyPathI = document.createElement('input');
@@ -105,7 +118,7 @@ export function openHostEditor(host: main.Host | null) {
     const passI = document.createElement('input');
     passI.type = 'password';
     passI.value = host?.keyPassphrase ?? '';
-    passI.placeholder = host?.authMethod === 'key' ? 'Key passphrase (if encrypted)' : '';
+    passI.placeholder = 'Key passphrase (if encrypted)';
     const passField = field('Key passphrase', passI);
 
     const pwI = document.createElement('input');
@@ -123,7 +136,7 @@ export function openHostEditor(host: main.Host | null) {
             const s = document.createElement('button');
             s.className = 'swatch' + (chosenColor === c ? ' on' : '') + (c === '' ? ' none' : '');
             if (c) s.style.background = c;
-            s.title = c || 'Default';
+            s.dataset.tip = c || 'Default';
             s.onclick = () => { chosenColor = c; renderSwatches(); };
             colorWrap.appendChild(s);
         }
@@ -148,28 +161,30 @@ export function openHostEditor(host: main.Host | null) {
     foot.className = 'modal-foot';
     const cancel = document.createElement('button');
     cancel.className = 'btn';
+    cancel.type = 'button';
     cancel.textContent = 'Cancel';
-    cancel.onclick = () => overlay.remove();
     const save = document.createElement('button');
     save.className = 'btn primary';
+    save.type = 'button';
     save.textContent = host ? 'Save' : 'Add host';
-    save.onclick = () => { void doSave(); };
     foot.append(cancel, save);
     modal.appendChild(foot);
-    overlay.appendChild(modal);
-    document.getElementById('modal-root')!.appendChild(overlay);
-    overlay.addEventListener('mousedown', ev => { if (ev.target === overlay) overlay.remove(); });
+
+    const close = openDialog(modal);
+    closeBtn.onclick = close;
+    cancel.onclick = close;
     nameI.focus();
 
     const syncAuth = () => {
-        const m = authSel.value;
-        keyField.style.display = m === 'key' ? '' : 'none';
-        keyPathField.style.display = m === 'key' && keySel.value === '__custom__' ? '' : 'none';
-        passField.style.display = m === 'key' ? '' : 'none';
-        pwField.style.display = m === 'password' ? '' : 'none';
+        keyField.style.display = authVal === 'key' ? '' : 'none';
+        keyPathField.style.display = authVal === 'key' && keyVal === '__custom__' ? '' : 'none';
+        passField.style.display = authVal === 'key' ? '' : 'none';
+        pwField.style.display = authVal === 'password' ? '' : 'none';
     };
-    authSel.onchange = syncAuth;
-    keySel.onchange = syncAuth;
+    keyPathI.addEventListener('input', () => {
+        keyVal = '__custom__';
+        syncAuth();
+    });
     syncAuth();
 
     async function doSave() {
@@ -177,20 +192,20 @@ export function openHostEditor(host: main.Host | null) {
         h.name = nameI.value.trim();
         h.group = groupI.value.trim();
         h.address = addrI.value.trim();
-        h.port = parseInt(portI.value, 10) || 22;
+        h.port = portVal || 22;
         h.user = userI.value.trim();
-        h.authMethod = authSel.value;
+        h.authMethod = authVal;
         h.color = chosenColor;
         h.notes = notesI.value;
         if (h.authMethod === 'key') {
-            h.keyPath = keySel.value === '__custom__' ? keyPathI.value.trim() : keySel.value;
+            h.keyPath = keyVal === '__custom__' ? keyPathI.value.trim() : keyVal;
             h.keyPassphrase = passI.value;
         }
         if (h.authMethod === 'password') {
             h.password = pwI.value;
         }
         if (!h.address || !h.user) {
-            alert('Address and user are required');
+            toastError(new Error('Address and user are required'));
             return;
         }
         try {
@@ -199,7 +214,7 @@ export function openHostEditor(host: main.Host | null) {
             toastError(err);
             return;
         }
-        overlay.remove();
+        close();
         try {
             await refreshHosts();
         } catch (err) {
@@ -207,4 +222,5 @@ export function openHostEditor(host: main.Host | null) {
         }
         notify();
     }
+    save.onclick = () => { void doSave(); };
 }

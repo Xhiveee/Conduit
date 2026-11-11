@@ -2,7 +2,8 @@ import * as App from '../wailsjs/go/main/App';
 import { state, onUI, connectHost, activateTab, sessionOpenForHost, refreshHosts, type Tab } from './state';
 import { icon } from './icons';
 import { openHostEditor } from './host-editor';
-import { toastError } from './toast';
+import { toastError, toastInfo } from './toast';
+import { confirmDialog } from './ui/dialog';
 
 const root = () => document.getElementById('sidebar')!;
 
@@ -30,7 +31,7 @@ export function renderSidebar() {
     newBtn.onclick = () => openHostEditor(null);
     const importBtn = document.createElement('button');
     importBtn.className = 'sb-btn';
-    importBtn.title = 'Import from ~/.ssh/config';
+    importBtn.dataset.tip = 'Import from ~/.ssh/config';
     importBtn.append(icon('download', 14), document.createTextNode('Import'));
     importBtn.onclick = () => { void importSSHConfig(); };
     actions.append(newBtn, importBtn);
@@ -133,7 +134,7 @@ function renderList() {
             const isAgent = k.source === 'agent';
             const base = k.path.split(/[\\/]/).pop() || k.path;
             const label = isAgent ? 'agent: ' + (k.comment || k.type || 'key') : base;
-            row.title = [isAgent ? 'ssh-agent' : k.path, k.fingerprint, k.comment].filter(Boolean).join('\n');
+            row.dataset.tip = [isAgent ? 'ssh-agent' : k.path, k.fingerprint, k.comment].filter(Boolean).join('\n');
             const ic = icon(isAgent ? 'server' : 'file-key', 13);
             const nameEl = document.createElement('span');
             nameEl.className = 'kname';
@@ -173,10 +174,10 @@ function hostRow(h: (typeof state.hosts)[number]): HTMLElement {
 
     const actions = document.createElement('span');
     actions.className = 'row-actions';
-    const mk = (ic: string, title: string, fn: () => void, danger = false) => {
+    const mk = (ic: string, tip: string, fn: () => void, danger = false) => {
         const b = document.createElement('button');
         b.className = 'row-act' + (danger ? ' danger' : '');
-        b.title = title;
+        b.dataset.tip = tip;
         b.appendChild(icon(ic, 14));
         b.onclick = ev => { ev.stopPropagation(); fn(); };
         return b;
@@ -212,7 +213,13 @@ async function duplicateHost(h: (typeof state.hosts)[number]) {
 }
 
 async function deleteHost(h: (typeof state.hosts)[number]) {
-    if (!confirm(`Delete host "${h.name || h.address}"?`)) return;
+    const ok = await confirmDialog({
+        title: 'Delete host',
+        message: `Delete host "${h.name || h.address}"?`,
+        confirmLabel: 'Delete',
+        danger: true,
+    });
+    if (!ok) return;
     try {
         await App.DeleteHost(h.id);
         await refreshHosts();
@@ -226,10 +233,10 @@ export async function importSSHConfig() {
         const added = await App.ImportSSHConfig();
         await refreshHosts();
         if (added.length === 0) {
-            alert('No new hosts found in ~/.ssh/config');
+            toastInfo('No new hosts found in ~/.ssh/config');
         }
     } catch (err) {
-        alert('Import failed: ' + String(err));
+        toastError(err);
     }
 }
 

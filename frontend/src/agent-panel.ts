@@ -49,12 +49,13 @@ export function renderAgent() {
 
     const resetBtn = document.createElement('button');
     resetBtn.className = 'ag-btn';
-    resetBtn.title = 'Reset conversation';
+    resetBtn.dataset.tip = 'Reset conversation';
     resetBtn.appendChild(icon('rotate-ccw', 15));
     resetBtn.onclick = () => { void App.AgentReset(); state.agentMessages = []; state.agentTools.clear(); notify(); };
     const stopBtn = document.createElement('button');
     stopBtn.className = 'ag-btn danger';
-    stopBtn.title = 'Stop agent';
+    stopBtn.dataset.tip = 'Stop agent';
+    stopBtn.dataset.tipKeys = 'Esc';
     stopBtn.appendChild(icon('square', 13));
     stopBtn.onclick = () => { void App.AgentStop(); };
     head.append(title, resetBtn, stopBtn);
@@ -112,11 +113,12 @@ export function renderAgent() {
     const send = document.createElement('button');
     send.className = 'ag-send';
     if (state.agentBusy) {
-        send.title = 'Stop agent';
+        send.dataset.tip = 'Stop agent';
         send.appendChild(icon('square', 14));
         send.onclick = () => { App.AgentStop().catch(toastError); };
     } else {
-        send.title = 'Send';
+        send.dataset.tip = 'Send';
+        send.dataset.tipKeys = 'Enter';
         send.appendChild(icon('send', 15));
         send.onclick = () => sendAgentMessage(ta.value);
     }

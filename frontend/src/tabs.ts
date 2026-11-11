@@ -11,7 +11,8 @@ export function renderTabs() {
     }
     const add = document.createElement('button');
     add.className = 'tab new-tab';
-    add.title = 'New quick connect';
+    add.dataset.tip = 'New quick connect';
+    add.dataset.tipKeys = 'Ctrl+Shift+T';
     add.appendChild(icon('plus', 15));
     add.onclick = () => focusQuickConnect();
     el.appendChild(add);
@@ -20,7 +21,15 @@ export function renderTabs() {
 function tabEl(tab: Tab): HTMLElement {
     const el = document.createElement('div');
     el.className = 'tab' + (tab.key === state.activeKey ? ' active' : '');
-    el.title = tab.closedReason ? tab.title + ' — ' + tab.closedReason : tab.title;
+    if (tab.color) {
+        el.classList.add('has-color');
+        el.style.setProperty('--tab-color', tab.color);
+    }
+    if (tab.closedReason || tab.error) {
+        el.dataset.tip = tab.title + ' — ' + (tab.closedReason || tab.error);
+    } else {
+        el.dataset.tip = tab.title;
+    }
     el.onclick = () => activateTab(tab.key);
     el.onauxclick = ev => { if (ev.button === 1) closeTab(tab.key); };
 

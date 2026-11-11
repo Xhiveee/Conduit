@@ -3,6 +3,8 @@ import { notify, applyAll, settingsOrDefault, customThemes, themeSettings } from
 import { BUILTIN_THEMES, applyTheme, resolveTheme, type ThemeDef } from './themes';
 import { icon } from './icons';
 import { toastError } from './toast';
+import { uiSelect, uiSwitch, uiSlider, uiNumber, uiColor } from './ui';
+import { openDialog, confirmDialog } from './ui/dialog';
 import type { main } from '../wailsjs/go/models';
 import type { ITheme } from '@xterm/xterm';
 
@@ -34,6 +36,7 @@ const UI_VARS = [
     '--bg', '--surface-1', '--surface-2', '--surface-3',
     '--text', '--text-2', '--text-3',
     '--accent', '--accent-ink', '--agent', '--danger',
+    '--border', '--border-strong',
 ];
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -68,9 +71,9 @@ const SECTIONS: SettingsSection[] = [
     { id: 'css', label: 'Custom CSS', render: renderCustomCSS },
 ];
 
+let settingsClose: (() => void) | null = null;
+
 export function openSettings() {
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
     const modal = document.createElement('div');
     modal.className = 'modal wide';
 
@@ -80,8 +83,8 @@ export function openSettings() {
     h2.textContent = 'Settings';
     const closeBtn = document.createElement('button');
     closeBtn.className = 'x';
+    closeBtn.type = 'button';
     closeBtn.appendChild(icon('x', 15));
-    closeBtn.onclick = () => overlay.remove();
     head.append(h2, closeBtn);
     modal.appendChild(head);
 
@@ -103,12 +106,16 @@ export function openSettings() {
     const close = document.createElement('button');
     close.className = 'btn';
     close.textContent = 'Close';
-    close.onclick = () => overlay.remove();
     foot.appendChild(close);
     modal.appendChild(foot);
-    overlay.appendChild(modal);
-    document.getElementById('modal-root')!.appendChild(overlay);
-    overlay.addEventListener('mousedown', ev => { if (ev.target === overlay) overlay.remove(); });
+
+    const closeDialog = openDialog(modal);
+    settingsClose = () => {
+        settingsClose = null;
+        closeDialog();
+    };
+    closeBtn.onclick = () => settingsClose?.();
+    close.onclick = () => settingsClose?.();
 
     const show = (sec: SettingsSection) => {
         nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.sec === sec.id));
@@ -117,6 +124,7 @@ export function openSettings() {
     };
     for (const sec of SECTIONS) {
         const b = document.createElement('button');
+        b.type = 'button';
         b.textContent = sec.label;
         b.dataset.sec = sec.id;
         b.onclick = () => show(sec);
@@ -154,14 +162,7 @@ function row(label: string, sub: string, control: HTMLElement): HTMLElement {
 }
 
 function toggle(on: boolean, onchange: (v: boolean) => void): HTMLElement {
-    const t = document.createElement('button');
-    t.className = 'toggle' + (on ? ' on' : '');
-    t.onclick = () => {
-        const v = !t.classList.contains('on');
-        t.classList.toggle('on', v);
-        onchange(v);
-    };
-    return t;
+    return uiSwitch(on, onchange);
 }
 
 function renderAppearance(pane: HTMLElement) {
@@ -200,7 +201,6 @@ function renderAppearance(pane: HTMLElement) {
         name.textContent = t.name;
         const tag = document.createElement('span');
         tag.className = 'dim';
-        tag.style.fontSize = '10.5px';
         tag.textContent = t.builtin ? 'built-in' : 'custom';
         name.appendChild(tag);
         card.append(prev, name);
@@ -214,13 +214,14 @@ function renderAppearance(pane: HTMLElement) {
     }
     g.appendChild(themes);
 
-    const scale = document.createElement('input');
-    scale.type = 'range';
-    scale.min = '0.8';
-    scale.max = '1.4';
-    scale.step = '0.05';
-    scale.value = String(s.uiScale || 1);
-    scale.oninput = () => update({ uiScale: parseFloat(scale.value) });
+    const scale = uiSlider({
+        value: s.uiScale || 1,
+        min: 0.8,
+        max: 1.4,
+        step: 0.05,
+        format: v => v.toFixed(2) + '×',
+        onInput: v => update({ uiScale: v }),
+    });
     g.appendChild(row('Interface scale', 'Scales the whole UI', scale));
 
     const sideSeg = document.createElement('div');
@@ -244,32 +245,39 @@ function renderAppearance(pane: HTMLElement) {
     pane.appendChild(g);
 }
 
-function renderThemes(pane: HTMLElement) {
+function renderThemes(pane: HTMLElement, initialId?: string) {
     const s = settingsOrDefault();
     const g = group();
+
+    const allThemes: ThemeDef[] = [...BUILTIN_THEMES, ...customThemes()];
+    let selValue = initialId ?? s.themeId;
+    const cur = () => allThemes.find(t => t.id === selValue) ?? customThemes().find(t => t.id === selValue);
 
     const top = document.createElement('div');
     top.className = 'set-row';
     const topLabel = document.createElement('label');
     topLabel.textContent = 'Theme';
-    const sel = document.createElement('select');
-    sel.style.width = '220px';
-    const allThemes: ThemeDef[] = [...BUILTIN_THEMES, ...customThemes()];
-    for (const t of allThemes) {
-        const o = document.createElement('option');
-        o.value = t.id;
-        o.textContent = t.name + (t.builtin ? ' (built-in)' : '');
-        sel.appendChild(o);
-    }
-    sel.value = s.themeId;
+    const sel = uiSelect({
+        value: selValue,
+        options: allThemes.map(t => ({
+            value: t.id,
+            label: t.name,
+            description: t.builtin ? 'built-in' : 'custom',
+        })),
+        onChange: v => {
+            selValue = v;
+            nameI.value = cur()?.name ?? '';
+            renderThemeVars();
+        },
+    });
     top.append(topLabel, sel);
 
     const dupBtn = document.createElement('button');
     dupBtn.className = 'btn';
-    dupBtn.style.marginLeft = '8px';
+    dupBtn.style.marginLeft = '0.5rem';
     dupBtn.textContent = 'Duplicate as custom';
     dupBtn.onclick = () => {
-        const src = allThemes.find(t => t.id === sel.value) ?? allThemes[0];
+        const src = cur() ?? allThemes[0];
         const copy: ThemeDef = {
             id: 'custom-' + Date.now().toString(36),
             name: src.name + ' copy',
@@ -280,12 +288,8 @@ function renderThemes(pane: HTMLElement) {
         const cur2 = settingsOrDefault();
         cur2.customThemes = [...(cur2.customThemes ?? []), copy as unknown as main.Theme];
         update({ customThemes: cur2.customThemes });
-        const opt = document.createElement('option');
-        opt.value = copy.id;
-        opt.textContent = copy.name;
-        sel.appendChild(opt);
-        sel.value = copy.id;
-        renderThemeVars();
+        pane.innerHTML = '';
+        renderThemes(pane, copy.id);
     };
     top.appendChild(dupBtn);
     g.appendChild(top);
@@ -294,8 +298,7 @@ function renderThemes(pane: HTMLElement) {
     nameRow.className = 'set-row';
     nameRow.style.display = 'none';
     const nameI = document.createElement('input');
-    nameI.style.width = '220px';
-    const cur = () => customThemes().find(t => t.id === sel.value);
+    nameI.style.width = '13.75rem';
     nameI.onchange = () => {
         const t = cur();
         if (t) {
@@ -310,21 +313,26 @@ function renderThemes(pane: HTMLElement) {
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn danger';
-    delBtn.style.margin = '4px 0 12px';
+    delBtn.style.margin = '0.25rem 0 0.75rem';
     delBtn.style.display = 'none';
     delBtn.textContent = 'Delete custom theme';
     delBtn.onclick = () => {
         const t = cur();
         if (!t) return;
-        if (!confirm(`Delete theme "${t.name}"?`)) return;
-        const wasSelected = sel.value === t.id;
-        const cur2 = settingsOrDefault();
-        cur2.customThemes = (cur2.customThemes ?? []).filter((x: any) => x.id !== t.id);
-        sel.querySelector(`option[value="${t.id}"]`)?.remove();
-        if (cur2.themeId === t.id) update({ themeId: 'black', customThemes: cur2.customThemes });
-        else update({ customThemes: cur2.customThemes });
-        if (wasSelected) sel.value = settingsOrDefault().themeId;
-        renderThemeVars();
+        void confirmDialog({
+            title: 'Delete theme',
+            message: `Delete theme "${t.name}"?`,
+            confirmLabel: 'Delete',
+            danger: true,
+        }).then(ok => {
+            if (!ok) return;
+            const cur2 = settingsOrDefault();
+            cur2.customThemes = (cur2.customThemes ?? []).filter((x: any) => x.id !== t.id);
+            if (cur2.themeId === t.id) update({ themeId: 'black', customThemes: cur2.customThemes });
+            else update({ customThemes: cur2.customThemes });
+            selValue = settingsOrDefault().themeId;
+            renderThemeVars();
+        });
     };
     g.appendChild(delBtn);
 
@@ -336,28 +344,17 @@ function renderThemes(pane: HTMLElement) {
         item.className = 'var-item';
         const l = document.createElement('label');
         l.textContent = labelText;
-        const inp = document.createElement('input');
-        inp.type = 'color';
-        inp.value = normalizeColor(get());
-        inp.oninput = () => {
-            set(inp.value);
-            onLive();
-            persist();
-        };
-        const hex = document.createElement('input');
-        hex.type = 'text';
-        hex.value = get();
-        hex.spellcheck = false;
-        hex.onchange = () => {
-            if (/^#[0-9a-fA-F]{6}$/.test(hex.value)) {
-                set(hex.value);
-                inp.value = hex.value;
+        const picker = uiColor({
+            value: get(),
+            allowAlpha: true,
+            onChange: v => {
+                set(v);
                 onLive();
                 persist();
-            }
-        };
-        l.append(inp);
-        item.append(l, hex);
+            },
+        });
+        l.appendChild(picker);
+        item.appendChild(l);
         return item;
     }
 
@@ -370,7 +367,7 @@ function renderThemes(pane: HTMLElement) {
         if (!t || t.builtin) {
             const note = document.createElement('div');
             note.className = 'muted';
-            note.style.fontSize = '12px';
+            note.style.fontSize = '0.75rem';
             note.textContent = 'Built-in themes are read-only. Duplicate one to customize it.';
             varsBox.appendChild(note);
             return;
@@ -406,20 +403,8 @@ function renderThemes(pane: HTMLElement) {
         varsBox.appendChild(termSub);
     }
 
-    sel.onchange = () => {
-        nameI.value = cur()?.name ?? '';
-        renderThemeVars();
-    };
     renderThemeVars();
     pane.appendChild(g);
-}
-
-function normalizeColor(c: string): string {
-    if (/^#[0-9a-fA-F]{6}$/.test(c)) return c;
-    if (/^#[0-9a-fA-F]{3}$/.test(c)) {
-        return '#' + c[1] + c[1] + c[2] + c[2] + c[3] + c[3];
-    }
-    return '#000000';
 }
 
 function renderTerminal(pane: HTMLElement) {
@@ -433,69 +418,61 @@ function renderTerminal(pane: HTMLElement) {
     fontI.onchange = () => update({ fontFamily: fontI.value });
     g.appendChild(row('Font family', '', fontI));
 
-    const sizeI = document.createElement('input');
-    sizeI.type = 'number';
-    sizeI.min = '8';
-    sizeI.max = '32';
-    sizeI.value = String(s.fontSize);
-    sizeI.onchange = () => update({ fontSize: parseInt(sizeI.value, 10) || 14 });
+    const sizeI = uiNumber({
+        value: s.fontSize,
+        min: 8,
+        max: 32,
+        step: 1,
+        onChange: v => update({ fontSize: v }),
+    });
     g.appendChild(row('Font size', 'Pixels', sizeI));
 
-    const lhI = document.createElement('input');
-    lhI.type = 'number';
-    lhI.min = '0.8';
-    lhI.max = '2.5';
-    lhI.step = '0.05';
-    lhI.value = String(s.lineHeight);
-    lhI.onchange = () => update({ lineHeight: parseFloat(lhI.value) || 1.3 });
+    const lhI = uiNumber({
+        value: s.lineHeight,
+        min: 0.8,
+        max: 2.5,
+        step: 0.05,
+        onChange: v => update({ lineHeight: v }),
+    });
     g.appendChild(row('Line height', '', lhI));
 
     const weightSel = (val: number, set: (v: number) => void) => {
-        const sel = document.createElement('select');
-        sel.style.width = '140px';
-        for (const w of [300, 400, 500, 600, 700]) {
-            const o = document.createElement('option');
-            o.value = String(w);
-            o.textContent = String(w);
-            sel.appendChild(o);
-        }
-        sel.value = String(val || 400);
-        sel.onchange = () => set(parseInt(sel.value, 10));
+        let v = val || 400;
+        const sel = uiSelect({
+            value: String(v),
+            options: [300, 400, 500, 600, 700].map(w => ({ value: String(w), label: String(w) })),
+            onChange: o => { v = parseInt(o, 10); set(v); },
+        });
         return sel;
     };
     g.appendChild(row('Font weight', '', weightSel(s.fontWeight || 400, v => update({ fontWeight: v }))));
     g.appendChild(row('Bold weight', '', weightSel(s.fontWeightBold || 600, v => update({ fontWeightBold: v }))));
 
-    const lsI = document.createElement('input');
-    lsI.type = 'number';
-    lsI.min = '-2';
-    lsI.max = '10';
-    lsI.step = '0.5';
-    lsI.value = String(s.letterSpacing || 0);
-    lsI.onchange = () => update({ letterSpacing: parseFloat(lsI.value) || 0 });
+    const lsI = uiNumber({
+        value: s.letterSpacing || 0,
+        min: -2,
+        max: 10,
+        step: 0.5,
+        onChange: v => update({ letterSpacing: v }),
+    });
     g.appendChild(row('Letter spacing', 'Pixels between characters', lsI));
 
-    const cursorSel = document.createElement('select');
-    cursorSel.style.width = '140px';
-    for (const [v, l] of [['bar', 'Bar'], ['block', 'Block'], ['underline', 'Underline']] as const) {
-        const o = document.createElement('option');
-        o.value = v;
-        o.textContent = l;
-        cursorSel.appendChild(o);
-    }
-    cursorSel.value = s.cursorStyle || 'bar';
-    cursorSel.onchange = () => update({ cursorStyle: cursorSel.value });
+    const cursorSel = uiSelect({
+        value: s.cursorStyle || 'bar',
+        options: [['bar', 'Bar'], ['block', 'Block'], ['underline', 'Underline']].map(([v, l]) => ({ value: v, label: l })),
+        onChange: v => update({ cursorStyle: v }),
+    });
     g.appendChild(row('Cursor style', '', cursorSel));
 
     g.appendChild(row('Cursor blink', '', toggle(s.cursorBlink, v => update({ cursorBlink: v }))));
 
-    const scrollI = document.createElement('input');
-    scrollI.type = 'number';
-    scrollI.min = '0';
-    scrollI.max = '100000';
-    scrollI.step = '1000';
-    scrollI.value = String(s.scrollback);
-    scrollI.onchange = () => update({ scrollback: parseInt(scrollI.value, 10) || 10000 });
+    const scrollI = uiNumber({
+        value: s.scrollback,
+        min: 0,
+        max: 100000,
+        step: 1000,
+        onChange: v => update({ scrollback: v }),
+    });
     g.appendChild(row('Scrollback', 'Lines kept in history', scrollI));
 
     g.appendChild(row('Copy on select', '', toggle(s.copyOnSelect, v => update({ copyOnSelect: v }))));
@@ -547,12 +524,13 @@ function renderAgentSection(pane: HTMLElement) {
     modelF.append(modelL, modelI);
     g.appendChild(modelF);
 
-    const stepsI = document.createElement('input');
-    stepsI.type = 'number';
-    stepsI.min = '1';
-    stepsI.max = '100';
-    stepsI.value = String(s.ai.maxSteps || 30);
-    stepsI.onchange = () => { ai().maxSteps = parseInt(stepsI.value, 10) || 30; persistAI(); };
+    const stepsI = uiNumber({
+        value: s.ai.maxSteps || 30,
+        min: 1,
+        max: 100,
+        step: 1,
+        onChange: v => { ai().maxSteps = v; persistAI(); },
+    });
     const stepsF = document.createElement('div');
     stepsF.className = 'field';
     const stepsL = document.createElement('label');
@@ -602,9 +580,8 @@ function renderCustomCSS(pane: HTMLElement) {
 }
 
 export function toggleSettings() {
-    const existing = document.querySelector('.modal-overlay');
-    if (existing) {
-        existing.remove();
+    if (settingsClose) {
+        settingsClose();
         return;
     }
     openSettings();

@@ -11,6 +11,7 @@ import { renderSidebar } from './sidebar';
 import { renderAgent, focusAgentInput } from './agent-panel';
 import { toggleSettings } from './settings';
 import { icon } from './icons';
+import { initTooltips, installContextMenuGuard, escapeTop } from './ui';
 import { WindowMinimise, WindowToggleMaximise, Quit } from '../wailsjs/runtime/runtime';
 
 function renderAll() {
@@ -99,9 +100,7 @@ function setupShortcuts() {
         const target = ev.target as HTMLElement;
         const typing = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
         if (ev.key === 'Escape') {
-            const overlay = document.querySelector('.modal-overlay');
-            if (overlay) {
-                overlay.remove();
+            if (escapeTop()) {
                 ev.preventDefault();
             }
             return;
@@ -133,6 +132,8 @@ function setupShortcuts() {
 }
 
 async function boot() {
+    initTooltips();
+    installContextMenuGuard();
     setupTitlebar();
     setupSplitters();
     setupShortcuts();
