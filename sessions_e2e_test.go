@@ -114,6 +114,47 @@ func TestE2EPasswordSession(t *testing.T) {
 	}
 }
 
+func TestE2ERunInSessionClosedOnDisconnect(t *testing.T) {
+	host, user, pass := e2eEnv(t, "CONDUIT_E2E_HOST"), e2eEnv(t, "CONDUIT_E2E_USER"), e2eEnv(t, "CONDUIT_E2E_PASSWORD")
+	store, mgr := setupE2E(t)
+	h, err := store.SaveHost(Host{
+		Name: "e2e-close", Address: host, Port: e2ePort(t), User: user,
+		AuthMethod: "password", Password: pass,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := mgr.Connect(h.ID, 120, 32)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	type runOut struct {
+		res CommandResult
+		err error
+	}
+	done := make(chan runOut, 1)
+	go func() {
+		res, err := mgr.runInSession(context.Background(), id, "sleep 30", 60)
+		done <- runOut{res, err}
+	}()
+	time.Sleep(500 * time.Millisecond)
+	mgr.Disconnect(id)
+	select {
+	case out := <-done:
+		if out.err != nil {
+			t.Fatalf("runInSession err: %v", out.err)
+		}
+		if out.res.Status != "session_closed" {
+			t.Fatalf("status %q output %q", out.res.Status, out.res.Output)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("runInSession did not return after disconnect")
+	}
+	if n := len(mgr.ListSessions()); n != 0 {
+		t.Fatalf("sessions after disconnect: %d", n)
+	}
+}
+
 func TestE2EKeyAuth(t *testing.T) {
 	host, user := e2eEnv(t, "CONDUIT_E2E_HOST"), e2eEnv(t, "CONDUIT_E2E_USER")
 	keyPath := e2eEnv(t, "CONDUIT_E2E_KEY")
