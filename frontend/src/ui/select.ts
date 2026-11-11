@@ -41,8 +41,12 @@ export function uiSelect(opts: {
     };
 
     const close = () => {
-        pop?.remove();
+        const el = pop;
         pop = null;
+        if (el) {
+            el.classList.add('closing');
+            window.setTimeout(() => el.remove(), 110);
+        }
         releaseLayer?.();
         releaseLayer = null;
         btn.setAttribute('aria-expanded', 'false');

@@ -42,7 +42,17 @@ export function renderSidebar() {
         importBtn.className = 'sb-btn';
         importBtn.dataset.tip = 'Import from ~/.ssh/config';
         importBtn.append(icon('download', 14), document.createTextNode('Import'));
-        importBtn.onclick = () => { void importSSHConfig(); };
+        importBtn.onclick = () => {
+            importBtn.disabled = true;
+            importBtn.replaceChildren();
+            const sp = document.createElement('span');
+            sp.className = 'cl-spin';
+            importBtn.appendChild(sp);
+            void importSSHConfig().finally(() => {
+                importBtn.disabled = false;
+                importBtn.replaceChildren(icon('download', 14), document.createTextNode('Import'));
+            });
+        };
         actions.append(newBtn, importBtn);
         el.appendChild(actions);
 
@@ -108,14 +118,19 @@ function renderList(force: boolean) {
             count.className = 'count';
             count.textContent = String(items.length);
             head.appendChild(count);
+            const body = document.createElement('div');
+            body.className = 'sb-body' + (isCollapsed ? ' collapsed' : '');
+            const inner = document.createElement('div');
+            inner.className = 'sb-body-inner';
+            for (const h of items) inner.appendChild(hostRow(h));
+            body.appendChild(inner);
             head.onclick = () => {
-                if (collapsed.has(group)) collapsed.delete(group); else collapsed.add(group);
-                renderList(true);
+                const nowCollapsed = body.classList.toggle('collapsed');
+                if (nowCollapsed) collapsed.add(group); else collapsed.delete(group);
+                head.firstElementChild?.replaceWith(icon(nowCollapsed ? 'chevron-right' : 'chevron-down', 13));
             };
             section.appendChild(head);
-            if (!isCollapsed) {
-                for (const h of items) section.appendChild(hostRow(h));
-            }
+            section.appendChild(body);
             listEl.appendChild(section);
         }
     }
@@ -134,18 +149,25 @@ function renderList(force: boolean) {
     kcount.className = 'count';
     kcount.textContent = String(state.keys.length);
     keyHead.appendChild(kcount);
+    const kbody = document.createElement('div');
+    kbody.className = 'sb-body' + (keyCollapsed ? ' collapsed' : '');
+    const kinner = document.createElement('div');
+    kinner.className = 'sb-body-inner';
+    kbody.appendChild(kinner);
     keyHead.onclick = () => {
-        if (collapsed.has('__keys__')) collapsed.delete('__keys__'); else collapsed.add('__keys__');
-        renderList(true);
+        const nowCollapsed = kbody.classList.toggle('collapsed');
+        if (nowCollapsed) collapsed.add('__keys__'); else collapsed.delete('__keys__');
+        keyHead.firstElementChild?.replaceWith(icon(nowCollapsed ? 'chevron-right' : 'chevron-down', 13));
     };
     keySection.appendChild(keyHead);
+    keySection.appendChild(kbody);
     if (!keyCollapsed) {
         if (state.keys.length === 0) {
             const none = document.createElement('div');
             none.className = 'sb-empty';
             none.style.padding = '8px 16px';
             none.textContent = 'No keys found in ~/.ssh';
-            keySection.appendChild(none);
+            kinner.appendChild(none);
         }
         for (const k of state.keys) {
             const row = document.createElement('div');
@@ -165,7 +187,7 @@ function renderList(force: boolean) {
             meta.className = 'kmeta';
             meta.textContent = [k.type, k.fingerprint ? k.fingerprint.slice(0, 24) + '…' : '', k.encrypted ? 'encrypted' : ''].filter(Boolean).join(' · ');
             row.append(top, meta);
-            keySection.appendChild(row);
+            kinner.appendChild(row);
         }
     }
     listEl.appendChild(keySection);

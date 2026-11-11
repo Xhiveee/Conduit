@@ -69,13 +69,19 @@ export function showMenuAt(items: MenuEntry[], x: number, y: number, minWidth = 
         buttons[active].scrollIntoView({ block: 'nearest' });
     };
 
+    let closed = false;
     const close = () => {
-        pop.remove();
-        releaseLayer();
-        document.removeEventListener('mousedown', onDocDown, true);
-        document.removeEventListener('scroll', onScroll, true);
-        window.removeEventListener('resize', close);
-        window.removeEventListener('keydown', onKey, true);
+        if (closed) return;
+        closed = true;
+        pop.classList.add('closing');
+        window.setTimeout(() => {
+            pop.remove();
+            releaseLayer();
+            document.removeEventListener('mousedown', onDocDown, true);
+            document.removeEventListener('scroll', onScroll, true);
+            window.removeEventListener('resize', close);
+            window.removeEventListener('keydown', onKey, true);
+        }, 110);
     };
 
     const onDocDown = (ev: MouseEvent) => {

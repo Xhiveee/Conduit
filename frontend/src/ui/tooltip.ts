@@ -7,9 +7,12 @@ function hide() {
         clearTimeout(timer);
         timer = null;
     }
-    tipEl?.remove();
+    const el = tipEl;
     tipEl = null;
     current = null;
+    if (!el) return;
+    el.classList.add('closing');
+    window.setTimeout(() => el.remove(), 90);
 }
 
 function show(target: HTMLElement) {

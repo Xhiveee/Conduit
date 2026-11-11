@@ -48,14 +48,9 @@ md.renderer.rules.fence = (tokens, idx) => {
     const token = tokens[idx];
     const lang = (token.info ?? '').trim().split(/\s+/)[0] || '';
     const code = token.content.replace(/\n$/, '');
-    let highlighted: string;
-    try {
-        highlighted = lang && hljs.getLanguage(lang)
-            ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
-            : md.utils.escapeHtml(code);
-    } catch {
-        highlighted = md.utils.escapeHtml(code);
-    }
+    const highlighted = lang && hljs.getLanguage(lang)
+        ? hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+        : md.utils.escapeHtml(code);
     const langLabel = lang || 'text';
     return '<div class="code-block" data-code="' + md.utils.escapeHtml(code) + '">' +
         '<div class="cb-head"><span class="cb-lang">' + md.utils.escapeHtml(langLabel) + '</span>' +
@@ -68,9 +63,22 @@ md.renderer.rules.fence = (tokens, idx) => {
 md.renderer.rules.link_open = (tokens, idx, options, _env, self) => {
     const token = tokens[idx];
     const href = token.attrGet('href') ?? '';
+    let safe = false;
+    try {
+        const u = new URL(href);
+        safe = u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'mailto:';
+    } catch { /* relative or invalid */ }
+    const env = _env as { __linkUnsafe?: boolean[] };
+    (env.__linkUnsafe ??= []).push(!safe);
+    if (!safe) return '';
     token.attrSet('class', 'md-link');
     token.attrSet('data-href', href);
-    token.attrSet('href', 'javascript:void(0)');
+    token.attrSet('href', '#');
+    return self.renderToken(tokens, idx, options);
+};
+md.renderer.rules.link_close = (tokens, idx, options, env, self) => {
+    const stack = (env as { __linkUnsafe?: boolean[] }).__linkUnsafe;
+    if (stack?.pop()) return '';
     return self.renderToken(tokens, idx, options);
 };
 const tableOpen = md.renderer.rules.table_open;
@@ -315,6 +323,7 @@ function onMsgsScroll() {
     } else if (!pinned) {
         updatePill();
     }
+    updateFades();
 }
 
 function updatePill() {
@@ -394,6 +403,15 @@ function syncMessages() {
     if (pinned || added || busy) {
         requestAnimationFrame(() => { if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight; });
     }
+    updateFades();
+}
+
+function updateFades() {
+    if (!msgsEl) return;
+    const top = msgsEl.scrollTop > 4;
+    const bottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight > 4;
+    msgsEl.classList.toggle('fade-top', top);
+    msgsEl.classList.toggle('fade-bottom', bottom);
 }
 
 let thinkingEl: HTMLElement | null = null;
@@ -659,17 +677,48 @@ function msgEl(m: AgentMsg): HTMLElement {
         return el;
     }
     el.innerHTML = md.render(m.content ?? '');
+    postProcessTables(el);
     return el;
+}
+
+const NUM_RE = /^[-+]?[\d.,]+\s*(%|[KMGTP]i?B?|k|M|G|ms|s)?$/i;
+function postProcessTables(root: HTMLElement) {
+    const wraps = Array.from(root.querySelectorAll('.md-table-wrap')) as HTMLElement[];
+    for (const wrap of wraps) {
+        const table = wrap.querySelector('table');
+        if (!table) continue;
+        const rows = Array.from(table.querySelectorAll('tr'));
+        const header = rows.find(r => !!r.querySelector('th'));
+        const bodyRows = rows.filter(r => !!r.querySelector('td'));
+        const colCount = Math.max(0, ...bodyRows.map(r => r.querySelectorAll('td').length));
+        for (let c = 0; c < colCount; c++) {
+            const cells = bodyRows
+                .map(r => r.querySelectorAll('td')[c] as HTMLElement | undefined)
+                .filter((x): x is HTMLElement => !!x);
+            if (cells.length === 0) continue;
+            const numeric = cells.every(td => NUM_RE.test(td.textContent?.trim() ?? ''));
+            if (!numeric) continue;
+            for (const td of cells) td.classList.add('rn');
+            if (header) {
+                const th = header.querySelectorAll('th')[c] as HTMLElement | undefined;
+                th?.classList.add('rn');
+            }
+        }
+    }
 }
 
 function onMsgsClick(ev: MouseEvent) {
     const target = ev.target as HTMLElement;
     const link = target.closest('.md-link') as HTMLElement | null;
     if (link) {
+        ev.preventDefault();
         const href = link.dataset.href ?? '';
-        if (href && !href.startsWith('javascript:')) {
-            BrowserOpenURL(href);
-        }
+        try {
+            const u = new URL(href);
+            if (u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'mailto:') {
+                BrowserOpenURL(href);
+            }
+        } catch { /* not a navigable URL */ }
         return;
     }
     const btn = target.closest('.cb-btn') as HTMLElement | null;
@@ -813,6 +862,7 @@ function toolArgsPreview(t: ToolCard): string {
 let clSearch = '';
 let clFilter = false;
 let clSearchFocused = false;
+const clCollapsed = new Set<string>();
 
 function syncChatList() {
     if (!listEl) return;
@@ -837,6 +887,11 @@ function syncChatList() {
     newChatBtn.appendChild(icon('plus', 13));
     newChatBtn.appendChild(document.createTextNode(' New chat'));
     newChatBtn.onclick = () => { void createChat(); };
+    if (state.chatListLoading) {
+        const sp = document.createElement('span');
+        sp.className = 'cl-spin';
+        top.appendChild(sp);
+    }
     top.append(search, newChatBtn);
     listEl.appendChild(top);
 
@@ -873,8 +928,10 @@ function syncChatList() {
         groups.get(g)!.push(c);
     }
     const groupNames = [...groups.keys()].filter(g => g).sort();
-    const renderSection = (name: string, items: typeof chats, collapsed: boolean) => {
+    const renderSection = (name: string, items: typeof chats, forceCollapsed?: boolean) => {
         if (!items.length) return;
+        const key = 'g:' + name;
+        const collapsed = forceCollapsed ?? clCollapsed.has(key);
         const sec = document.createElement('div');
         sec.className = 'cl-group';
         const head = document.createElement('button');
@@ -890,13 +947,20 @@ function syncChatList() {
         head.appendChild(cnt);
         const body = document.createElement('div');
         body.className = 'cl-group-body' + (collapsed ? ' collapsed' : '');
-        head.onclick = () => body.classList.toggle('collapsed');
-        for (const c of items) body.appendChild(chatRow(c, hostName));
+        const inner = document.createElement('div');
+        inner.className = 'cl-group-inner';
+        for (const c of items) inner.appendChild(chatRow(c, hostName));
+        body.appendChild(inner);
+        head.onclick = () => {
+            const nowCollapsed = body.classList.toggle('collapsed');
+            if (nowCollapsed) clCollapsed.add(key); else clCollapsed.delete(key);
+            head.firstElementChild?.replaceWith(icon(nowCollapsed ? 'chevron-right' : 'chevron-down', 12));
+        };
         sec.append(head, body);
         scroll.appendChild(sec);
     };
     renderSection('', groups.get('') ?? [], false);
-    for (const g of groupNames) renderSection(g, groups.get(g)!, false);
+    for (const g of groupNames) renderSection(g, groups.get(g)!);
 
     const archived = state.chatList.filter(c => c.archived && (!chk.checked || !hostId || c.hostId === hostId) && (!q || (c.title || '').toLowerCase().includes(q)));
     if (archived.length) {
@@ -915,8 +979,16 @@ function syncChatList() {
         head.appendChild(cnt);
         const body = document.createElement('div');
         body.className = 'cl-group-body collapsed';
-        head.onclick = () => body.classList.toggle('collapsed');
-        for (const c of archived) body.appendChild(chatRow(c, hostName));
+        const ainner = document.createElement('div');
+        ainner.className = 'cl-group-inner';
+        for (const c of archived) ainner.appendChild(chatRow(c, hostName));
+        body.appendChild(ainner);
+        head.onclick = () => {
+            const nowCollapsed = body.classList.toggle('collapsed');
+            clCollapsed.delete('g:__arch__');
+            if (!nowCollapsed) clCollapsed.add('g:__arch__');
+            head.firstElementChild?.replaceWith(icon(nowCollapsed ? 'chevron-right' : 'chevron-down', 12));
+        };
         sec.append(head, body);
         scroll.appendChild(sec);
     }

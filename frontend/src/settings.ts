@@ -89,7 +89,10 @@ export function openSettings(initialSection?: string) {
     const show = (sec: SettingsSection) => {
         nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.sec === sec.id));
         pane.innerHTML = '';
+        pane.classList.remove('pane-in');
+        void pane.offsetWidth;
         sec.render(pane);
+        pane.classList.add('pane-in');
     };
     showSection = show;
     for (const sec of SECTIONS) {

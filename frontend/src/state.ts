@@ -677,21 +677,36 @@ export async function retryTab(tab: Tab) {
     notify();
 }
 
+const closingTabs = new Set<string>();
+
+export function isTabClosing(key: string) {
+    return closingTabs.has(key);
+}
+
 export function closeTab(key: string) {
-    const idx = state.tabs.findIndex(t => t.key === key);
-    if (idx < 0) return;
-    const tab = state.tabs[idx];
-    state.tabs.splice(idx, 1);
-    tabCleanups.forEach(fn => fn(tab));
+    if (closingTabs.has(key)) return;
+    const tab = state.tabs.find(t => t.key === key);
+    if (!tab) return;
+    closingTabs.add(key);
+    notify();
     if (tab.sessionId) {
         state.sessions = state.sessions.filter(s => s.id !== tab.sessionId);
         App.Disconnect(tab.sessionId).catch(err => toastError(err));
     }
-    if (state.activeKey === key) {
-        const next = state.tabs[Math.min(idx, state.tabs.length - 1)];
-        state.activeKey = next ? next.key : '';
-    }
-    notify();
+    const delay = state.settings?.reduceMotion ? 0 : 140;
+    setTimeout(() => {
+        closingTabs.delete(key);
+        const idx = state.tabs.findIndex(t => t.key === key);
+        if (idx < 0) { notify(); return; }
+        const t = state.tabs[idx];
+        state.tabs.splice(idx, 1);
+        tabCleanups.forEach(fn => fn(t));
+        if (state.activeKey === key) {
+            const next = state.tabs[Math.min(idx, state.tabs.length - 1)];
+            state.activeKey = next ? next.key : '';
+        }
+        notify();
+    }, delay);
 }
 
 export async function duplicateTab(tab: Tab) {

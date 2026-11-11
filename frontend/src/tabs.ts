@@ -1,4 +1,4 @@
-import { state, activateTab, activeTab, closeTab, cycleTab, reconnectTab, retryTab, duplicateTab, moveTab, type Tab } from './state';
+import { state, activateTab, activeTab, closeTab, cycleTab, reconnectTab, retryTab, duplicateTab, moveTab, isTabClosing, type Tab } from './state';
 import { icon } from './icons';
 import { contextMenuAt, type MenuEntry } from './ui';
 
@@ -16,6 +16,7 @@ export function renderTabs() {
             els.set(tab.key, node);
         }
         node.classList.toggle('active', tab.key === state.activeKey);
+        node.classList.toggle('closing', isTabClosing(tab.key));
         const color = tab.color || '';
         if (color) {
             node.classList.add('has-color');
