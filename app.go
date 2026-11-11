@@ -12,6 +12,7 @@ type App struct {
 	store    *Store
 	sessions *SessionManager
 	agent    *Agent
+	emitFn   func(name string, args ...interface{})
 }
 
 func NewApp(store *Store) *App {
@@ -20,14 +21,19 @@ func NewApp(store *Store) *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	a.sessions = NewSessionManager(a.store)
-	a.sessions.emit = func(name string, args ...interface{}) {
+	a.emitFn = func(name string, args ...interface{}) {
 		runtime.EventsEmit(ctx, name, args...)
 	}
+	a.sessions = NewSessionManager(a.store)
+	a.sessions.emit = a.emitFn
 	a.agent = NewAgent(a)
 }
 
 func (a *App) emit(name string, args ...interface{}) {
+	if a.emitFn != nil {
+		a.emitFn(name, args...)
+		return
+	}
 	runtime.EventsEmit(a.ctx, name, args...)
 }
 
@@ -79,6 +85,10 @@ func (a *App) Connect(hostID string, cols, rows int) (string, error) {
 
 func (a *App) QuickConnect(target, password string, cols, rows int) (string, error) {
 	return a.sessions.QuickConnect(target, password, cols, rows)
+}
+
+func (a *App) ConnectWithSecret(hostID, secret string, save bool, cols, rows int) (string, error) {
+	return a.sessions.ConnectWithSecret(hostID, secret, save, cols, rows)
 }
 
 func (a *App) Write(id, data string) error {

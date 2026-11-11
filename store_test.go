@@ -86,3 +86,53 @@ func TestImportSSHConfigDedup(t *testing.T) {
 		t.Fatal("conduit.json missing host")
 	}
 }
+
+func TestStoreCorruptFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CONDUIT_DATA_DIR", dir)
+	path := filepath.Join(dir, "conduit.json")
+	bad := []byte("{ this is not json")
+	if err := os.WriteFile(path, bad, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewStore(); err == nil || !strings.Contains(err.Error(), "corrupted") {
+		t.Fatalf("expected corruption error, got %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != string(bad) {
+		t.Fatal("conduit.json was modified")
+	}
+}
+
+func TestStoreMergePartialSettings(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CONDUIT_DATA_DIR", dir)
+	path := filepath.Join(dir, "conduit.json")
+	raw := `{"hosts":[{"id":"h1","name":"keep","address":"example.com","port":22,"user":"u","authMethod":"agent"}],"settings":{"fontSize":16,"ai":{"maxSteps":5}}}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := store.GetSettings()
+	if st.FontSize != 16 || st.AI.MaxSteps != 5 {
+		t.Fatalf("saved values lost: %+v", st)
+	}
+	def := defaultSettings()
+	if st.FontFamily != def.FontFamily || st.ThemeID != def.ThemeID || st.LineHeight != def.LineHeight ||
+		st.UIScale != def.UIScale || st.AgentSide != def.AgentSide || st.Scrollback != def.Scrollback ||
+		st.SidebarWidth != def.SidebarWidth || st.AgentWidth != def.AgentWidth || st.CursorStyle != def.CursorStyle {
+		t.Fatalf("defaults not merged: %+v", st)
+	}
+	if !st.SidebarVisible || !st.AgentVisible || !st.AI.ApproveCommands {
+		t.Fatalf("bool defaults not applied for missing keys: %+v", st)
+	}
+	if n := len(store.ListHosts()); n != 1 {
+		t.Fatalf("hosts lost: %d", n)
+	}
+}

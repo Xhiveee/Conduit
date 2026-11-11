@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -90,10 +91,12 @@ func dataDir() string {
 	return filepath.Join(filepath.Dir(exe), "data")
 }
 
+const legacyFontFamily = "Cascadia Mono, Consolas, monospace"
+
 func defaultSettings() Settings {
 	return Settings{
 		ThemeID:        "black",
-		FontFamily:     "Cascadia Mono, Consolas, monospace",
+		FontFamily:     legacyFontFamily,
 		FontSize:       14,
 		LineHeight:     1.2,
 		CursorStyle:    "bar",
@@ -136,58 +139,93 @@ func (s *Store) load() error {
 		return err
 	}
 	if err := json.Unmarshal(raw, &s.data); err != nil {
-		s.data = storeData{Settings: defaultSettings()}
-		return nil
+		return fmt.Errorf("conduit.json is corrupted: %w", err)
 	}
-	if s.data.Settings.ThemeID == "" {
-		s.data.Settings = mergeSettings(defaultSettings(), s.data.Settings)
+	var top struct {
+		Settings json.RawMessage `json:"settings"`
 	}
+	_ = json.Unmarshal(raw, &top)
+	var smap map[string]interface{}
+	if len(top.Settings) > 0 {
+		_ = json.Unmarshal(top.Settings, &smap)
+	}
+	s.data.Settings = mergeSettings(defaultSettings(), s.data.Settings, smap)
 	return nil
 }
 
-func mergeSettings(def, cur Settings) Settings {
+func mergeSettings(def, cur Settings, m map[string]interface{}) Settings {
+	has := func(k string) bool { _, ok := m[k]; return ok }
+	ai, _ := m["ai"].(map[string]interface{})
+	hasAI := func(k string) bool { _, ok := ai[k]; return ok }
 	out := cur
-	if out.ThemeID == "" {
+	if !has("themeId") || out.ThemeID == "" {
 		out.ThemeID = def.ThemeID
 	}
-	if out.FontFamily == "" {
+	if !has("fontFamily") || out.FontFamily == "" || out.FontFamily == legacyFontFamily {
 		out.FontFamily = def.FontFamily
 	}
-	if out.FontSize == 0 {
+	if !has("fontSize") || out.FontSize == 0 {
 		out.FontSize = def.FontSize
 	}
-	if out.LineHeight == 0 {
+	if !has("lineHeight") || out.LineHeight == 0 {
 		out.LineHeight = def.LineHeight
 	}
-	if out.CursorStyle == "" {
+	if !has("cursorStyle") || out.CursorStyle == "" {
 		out.CursorStyle = def.CursorStyle
 	}
-	if out.Scrollback == 0 {
+	if !has("cursorBlink") {
+		out.CursorBlink = def.CursorBlink
+	}
+	if !has("scrollback") || out.Scrollback == 0 {
 		out.Scrollback = def.Scrollback
 	}
-	if out.UIScale == 0 {
+	if !has("copyOnSelect") {
+		out.CopyOnSelect = def.CopyOnSelect
+	}
+	if !has("rightClickPaste") {
+		out.RightClickPaste = def.RightClickPaste
+	}
+	if !has("uiScale") || out.UIScale == 0 {
 		out.UIScale = def.UIScale
 	}
-	if out.SidebarWidth == 0 {
+	if !has("sidebarWidth") || out.SidebarWidth == 0 {
 		out.SidebarWidth = def.SidebarWidth
 	}
-	if out.AgentWidth == 0 {
+	if !has("agentWidth") || out.AgentWidth == 0 {
 		out.AgentWidth = def.AgentWidth
 	}
-	if out.AgentSide == "" {
+	if !has("sidebarVisible") {
+		out.SidebarVisible = def.SidebarVisible
+	}
+	if !has("agentVisible") {
+		out.AgentVisible = def.AgentVisible
+	}
+	if !has("agentSide") || out.AgentSide == "" {
 		out.AgentSide = def.AgentSide
 	}
-	ai := out.AI
-	if ai.BaseURL == "" {
-		ai.BaseURL = def.AI.BaseURL
+	if !has("customCss") {
+		out.CustomCSS = def.CustomCSS
 	}
-	if ai.Model == "" {
-		ai.Model = def.AI.Model
+	a := out.AI
+	if !hasAI("baseUrl") || a.BaseURL == "" {
+		a.BaseURL = def.AI.BaseURL
 	}
-	if ai.MaxSteps == 0 {
-		ai.MaxSteps = def.AI.MaxSteps
+	if !hasAI("apiKey") {
+		a.APIKey = def.AI.APIKey
 	}
-	out.AI = ai
+	if !hasAI("model") || a.Model == "" {
+		a.Model = def.AI.Model
+	}
+	if !hasAI("approveCommands") {
+		a.ApproveCommands = def.AI.ApproveCommands
+	}
+	if !hasAI("maxSteps") || a.MaxSteps == 0 {
+		a.MaxSteps = def.AI.MaxSteps
+	}
+	if !hasAI("instructions") {
+		a.Instructions = def.AI.Instructions
+	}
+	out.AI = a
 	return out
 }
 

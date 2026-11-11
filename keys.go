@@ -170,6 +170,9 @@ func parseKeyFile(path, passphrase string) (ssh.Signer, error) {
 	if err != nil {
 		var pmErr *ssh.PassphraseMissingError
 		if errors.As(err, &pmErr) {
+			if passphrase == "" {
+				return nil, pmErr
+			}
 			key, err = ssh.ParseRawPrivateKeyWithPassphrase(raw, []byte(passphrase))
 		}
 		if err != nil {

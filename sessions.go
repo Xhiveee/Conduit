@@ -104,6 +104,29 @@ func (m *SessionManager) Connect(hostID string, cols, rows int) (string, error) 
 	return m.connect(h, cols, rows)
 }
 
+func (m *SessionManager) ConnectWithSecret(hostID, secret string, save bool, cols, rows int) (string, error) {
+	h, ok := m.store.HostByID(hostID)
+	if !ok {
+		return "", fmt.Errorf("host not found")
+	}
+	if h.AuthMethod == "key" {
+		h.KeyPassphrase = secret
+	} else {
+		h.Password = secret
+	}
+	id, err := m.connect(h, cols, rows)
+	if err != nil {
+		return "", err
+	}
+	if save {
+		if _, err := m.store.SaveHost(h); err != nil {
+			m.Disconnect(id)
+			return "", err
+		}
+	}
+	return id, nil
+}
+
 func (m *SessionManager) QuickConnect(target, password string, cols, rows int) (string, error) {
 	h, err := parseQuickTarget(target)
 	if err != nil {
@@ -158,13 +181,13 @@ func (m *SessionManager) connect(h Host, cols, rows int) (string, error) {
 	addr := net.JoinHostPort(h.Address, strconv.Itoa(h.Port))
 	cfg, cleanup, err := sshConfigFor(h)
 	if err != nil {
-		return "", err
+		return "", authError(h, err)
 	}
 	defer cleanup()
 	cfg.Timeout = sshDialTimeout
 	client, err := ssh.Dial("tcp", addr, cfg)
 	if err != nil {
-		return "", err
+		return "", authError(h, err)
 	}
 	sess, err := client.NewSession()
 	if err != nil {
@@ -392,6 +415,34 @@ func hostKeyCallback() (ssh.HostKeyCallback, error) {
 	}, nil
 }
 
+func classifyAuthError(h Host, err error) string {
+	if err == nil {
+		return ""
+	}
+	var pmErr *ssh.PassphraseMissingError
+	if errors.As(err, &pmErr) {
+		return "auth_required:passphrase"
+	}
+	msg := strings.ToLower(err.Error())
+	if h.AuthMethod == "key" {
+		if strings.Contains(msg, "unable to authenticate") || strings.Contains(msg, "passphrase") || strings.Contains(msg, "decrypt") {
+			return "auth_required:passphrase"
+		}
+		return ""
+	}
+	if strings.Contains(msg, "unable to authenticate") {
+		return "auth_required:password"
+	}
+	return ""
+}
+
+func authError(h Host, err error) error {
+	if kind := classifyAuthError(h, err); kind != "" {
+		return fmt.Errorf("%s: %w", kind, err)
+	}
+	return err
+}
+
 func keyboardInteractivePassword(password string) ssh.AuthMethod {
 	return ssh.KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
 		answers := make([]string, len(questions))
@@ -454,6 +505,12 @@ func sshConfigFor(h Host) (*ssh.ClientConfig, func(), error) {
 				keyboardInteractivePassword(h.Password),
 			)
 		}
+	}
+	if h.AuthMethod == "agent" && !h.Quick && h.Password != "" {
+		methods = append(methods,
+			ssh.Password(h.Password),
+			keyboardInteractivePassword(h.Password),
+		)
 	}
 	cfg.Auth = methods
 	return cfg, cleanup, nil

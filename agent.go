@@ -56,7 +56,7 @@ var agentTools = []llmTool{
 	newLLMTool("disconnect", "Close a session.", `{"type":"object","properties":{"session_id":{"type":"string"}},"required":["session_id"]}`),
 	newLLMTool("focus_session", "Bring a session's tab to the front.", `{"type":"object","properties":{"session_id":{"type":"string"}},"required":["session_id"]}`),
 	newLLMTool("set_theme", "Switch the UI theme. Builtin ids: black, dark, graphite, nord, solarized-dark, light. Custom theme ids also work.", `{"type":"object","properties":{"theme_id":{"type":"string"}},"required":["theme_id"]}`),
-	newLLMTool("update_settings", "Update UI settings live: fontSize, fontFamily, lineHeight, cursorStyle, uiScale, sidebarVisible, agentVisible, agentSide, themeId.", `{"type":"object","properties":{"settings":{"type":"object","properties":{"fontSize":{"type":"number"},"fontFamily":{"type":"string"},"lineHeight":{"type":"number"},"cursorStyle":{"type":"string"},"uiScale":{"type":"number"},"sidebarVisible":{"type":"boolean"},"agentVisible":{"type":"boolean"},"agentSide":{"type":"string","enum":["left","right"]},"themeId":{"type":"string"}}}},"required":["settings"]}`),
+	newLLMTool("update_settings", "Update UI settings live: fontSize, fontFamily, lineHeight, cursorStyle, uiScale, sidebarVisible, agentVisible, agentSide, themeId.", `{"type":"object","properties":{"settings":{"type":"object","properties":{"fontSize":{"type":"integer"},"fontFamily":{"type":"string"},"lineHeight":{"type":"number"},"cursorStyle":{"type":"string"},"uiScale":{"type":"number"},"sidebarVisible":{"type":"boolean"},"agentVisible":{"type":"boolean"},"agentSide":{"type":"string","enum":["left","right"]},"themeId":{"type":"string"}}}},"required":["settings"]}`),
 	newLLMTool("list_keys", "List discovered SSH keys (files in ~/.ssh and agent keys).", `{"type":"object","properties":{}}`),
 	newLLMTool("list_themes", "List available themes with id, name and builtin flag.", `{"type":"object","properties":{}}`),
 }
@@ -65,7 +65,6 @@ func (a *Agent) send(text, activeSessionID string) error {
 	a.mu.Lock()
 	if a.running {
 		a.mu.Unlock()
-		a.app.emit("agent:error", "agent is busy")
 		return fmt.Errorf("agent is busy")
 	}
 	a.running = true

@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -150,6 +152,51 @@ func TestE2EQuickConnect(t *testing.T) {
 	}
 	if res.Status != "done" || !strings.Contains(res.Output, "qc-ok") {
 		t.Fatalf("qc status %q output %q", res.Status, res.Output)
+	}
+}
+
+func TestE2EAgentRunCommand(t *testing.T) {
+	host, user, pass := e2eEnv(t, "CONDUIT_E2E_HOST"), e2eEnv(t, "CONDUIT_E2E_USER"), e2eEnv(t, "CONDUIT_E2E_PASSWORD")
+	store, mgr := setupE2E(t)
+	h, err := store.SaveHost(Host{
+		Name: "e2e-agent", Address: host, Port: e2ePort(t), User: user,
+		AuthMethod: "password", Password: pass,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid, err := mgr.Connect(h.ID, 120, 32)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	srv, requests := fakeLLM(t, func(call int, req []byte) string {
+		if call == 0 {
+			return llmToolCallResp("call_rc", "run_command", fmt.Sprintf(`{"session_id":%q,"command":"echo agent-ok","timeout_sec":30}`, sid))
+		}
+		return llmTextResp("agent run complete")
+	})
+	configureAITestStore(t, store, srv.URL, false)
+	app, events := agentAppWith(store, mgr)
+	if err := app.AgentSend("run echo agent-ok", sid); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "agent to finish", func() bool { return agentBusyFalse(events) })
+	reqs := requests()
+	if len(reqs) != 2 {
+		t.Fatalf("expected 2 LLM calls, got %d", len(reqs))
+	}
+	var second chatRequest
+	if err := json.Unmarshal([]byte(reqs[1]), &second); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, m := range toolResults(second) {
+		if strings.Contains(m, "agent-ok") && strings.Contains(m, `"done"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("tool result missing agent-ok/done: %s", reqs[1])
 	}
 }
 
