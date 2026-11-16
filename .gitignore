@@ -1,9 +1,10 @@
 build/bin
 .tools
 data
-.clean
 node_modules
-frontend/dist
-frontend/package.json.md5
+src/web/dist
+src/web/package.json.md5
 /conduit.exe
 .playwright-mcp/
+.agents/
+AGENTS.md

@@ -1,5 +1,4 @@
 package main
-
 import (
 	"embed"
 	"os"
@@ -12,7 +11,7 @@ import (
 	xwindows "golang.org/x/sys/windows"
 )
 
-//go:embed all:frontend/dist
+//go:embed all:web/dist
 var assets embed.FS
 
 func fatal(err error) {
