@@ -1,4 +1,4 @@
-module conduit
+module github.com/xhiveee/conduit
 
 go 1.26.0
 

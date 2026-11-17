@@ -1,19 +1,115 @@
-# README
+# Conduit
 
-## About
+Портативный SSH-клиент для Windows со встроенным ИИ-агентом: вкладки терминала, сохранённые хосты,
+чаты с агентом и полный доступ к серверу из одного окна.
 
-This is the official Wails Vanilla-TS template.
+Conduit состоит из одного процесса на Wails v2: Go-бэкенд держит SSH-сессии, хранит данные рядом
+с exe, а интерфейс на TypeScript общается с ним через события и биндинги. Агент работает через любой
+OpenAI-совместимый API и выполняет действия в открытых терминалах.
 
-You can configure the project by editing `wails.json`. More information about the project settings can be found
-here: https://wails.io/docs/reference/project-config
+## Возможности
 
-## Live Development
+- SSH-сессии: пароль, приватный ключ, ssh-agent Windows; импорт хостов из `~/.ssh/config`.
+- Проверка ключей хостов через `known_hosts` (TOFU) с предупреждением при несовпадении.
+- Вкладки терминала на xterm.js, поиск по буферу, переподключение и дублирование сессий.
+- Агент: 16 инструментов (подключение, команды, отправка клавиш, чтение экрана, хосты, темы,
+  настройки), история в чатах с группами и архивом.
+- Подтверждение команд по умолчанию и режим полного доступа (автопринятие) с явным предупреждением.
+- Тёмные и светлые темы, масштабирование интерфейса, русский и английский языки.
+- Портативность: данные лежат в `data/` рядом с exe, путь можно переопределить `CONDUIT_DATA_DIR`.
 
-To run in live development mode, run `wails dev` in the project directory. This will run a Vite development
-server that will provide very fast hot reload of your frontend changes. If you want to develop in a browser
-and have access to your Go methods, there is also a dev server that runs on http://localhost:34115. Connect
-to this in your browser, and you can call your Go code from devtools.
+## Архитектура
 
-## Building
+```
+интерфейс (Wails WebView2) ⇄ биндинги/события ⇄ Go
+                                                ├── SSH-сессии (golang.org/x/crypto/ssh)
+                                                ├── чаты и история (JSON в data/)
+                                                └── агент ⇄ OpenAI-совместимый API
+```
 
-To build a redistributable, production mode package, use `wails build`.
+- Один Go-пакет `conduit` в `src/`: `main.go` (запуск и опции окна), `app.go` (биндинги),
+  `sessions.go` (SSH и PTY), `agent.go`/`llm.go` (агент и клиент модели), `store.go`/`chats.go` (данные).
+- Интерфейс в `src/web`: vanilla TypeScript, Vite, xterm.js; сгенерированные биндинги — `src/web/wailsjs`.
+- Данные: `data/conduit.json` (хосты и настройки), `data/known_hosts`, `data/chats/*.json`.
+
+## Требования
+
+- Windows 10/11 с WebView2 Runtime (на Windows 11 уже установлен);
+- для сборки: Go 1.26+, Node.js 24+ и npm, Wails CLI v2.17.1.
+
+## Разработка
+
+Установите Wails CLI и зависимости интерфейса:
+
+```sh
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+cd src/web && npm install
+```
+
+Запуск с hot-reload:
+
+```sh
+cd src
+../wails dev
+```
+
+Для dev-режима задайте отдельный каталог данных, чтобы не трогать рабочие данные:
+
+```pwsh
+$env:CONDUIT_DATA_DIR = "$PWD\.clean\devdata"
+```
+
+### Сборка
+
+```sh
+cd src
+wails build -o Conduit.exe
+```
+
+Готовый файл — `src/build/bin/Conduit.exe`. Фронтенд собирается автоматически (`web/dist`,
+встраивается в exe через `go:embed`). Не используйте `wails build -clean`: он удаляет
+`src/build/bin/data` вместе с настройками и ключами.
+
+### Тесты
+
+```sh
+cd src
+go vet ./...
+go test ./...
+```
+
+## Запуск
+
+Запустите `Conduit.exe`. Каталог `data/` создаётся рядом с exe (не в репозитории): там настройки,
+хосты, файлы чатов и `known_hosts`. Для переноса достаточно копировать exe и каталог `data`.
+Путь к данным можно переопределить переменной `CONDUIT_DATA_DIR`.
+
+## Агент
+
+Настройки агента: Settings → Agent. Нужны Base URL (любой OpenAI-совместимый endpoint), API-ключ,
+модель, лимит шагов и размер контекстного окна. По умолчанию агент спрашивает подтверждение перед
+командами и изменениями хостов; режим полного доступа включается кнопкой-щитом в шапке панели.
+Агенту передаются запросы пользователя, история чата и вывод терминала, который он читает.
+
+## Безопасность
+
+- Ключи хостов проверяются по `known_hosts`; при смене ключа подключение отклоняется.
+- Секреты (пароли, парольные фразы ключей, API-ключ) хранятся локально в `data/conduit.json`;
+  шифрование через DPAPI — в планах на 0.1.x.
+- Приложение не собирает телеметрию и не отправляет данные, кроме запросов к настроенному API агента.
+- Агент выполняет команды в терминале от имени вашей SSH-сессии: включайте полный доступ только
+  для тех хостов, где это допустимо.
+
+## Ограничения MVP
+
+- Только Windows (Wails WebView2, ssh-agent через `\\.\pipe\openssh-ssh-agent`).
+- Нет автообновления и подписи кода: SmartScreen может предупреждать о неизвестном издателе.
+- Историю чатов можно удалить вручную; автоматической очистки пока нет.
+
+## Версия
+
+`0.1.0` — MVP, готовится к релизу.
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE).
