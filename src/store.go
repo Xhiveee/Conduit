@@ -1,4 +1,5 @@
 package main
+
 import (
 	"bufio"
 	"encoding/json"
@@ -150,6 +151,7 @@ func (s *Store) load() error {
 		s.warnings = append(s.warnings, fmt.Sprintf("settings were corrupted and reset (backup: %s)", filepath.Base(backup)))
 		return nil
 	}
+	s.decryptSecrets()
 	var top struct {
 		Settings json.RawMessage `json:"settings"`
 	}
@@ -160,6 +162,45 @@ func (s *Store) load() error {
 	}
 	s.data.Settings = mergeSettings(defaultSettings(), s.data.Settings, smap)
 	return nil
+}
+
+func (s *Store) decryptSecrets() {
+	for i := range s.data.Hosts {
+		s.data.Hosts[i].Password = s.decryptSecret(s.data.Hosts[i].Password)
+		s.data.Hosts[i].KeyPassphrase = s.decryptSecret(s.data.Hosts[i].KeyPassphrase)
+	}
+	s.data.Settings.AI.APIKey = s.decryptSecret(s.data.Settings.AI.APIKey)
+}
+
+func (s *Store) decryptSecret(stored string) string {
+	plain, err := unprotectSecret(stored)
+	if err != nil {
+		s.warnings = append(s.warnings, fmt.Sprintf("a stored secret could not be decrypted and was cleared (the data folder may come from another Windows user): %v", err))
+		return ""
+	}
+	return plain
+}
+
+func (s *Store) dataForDisk() (storeData, error) {
+	out := storeData{Hosts: make([]Host, len(s.data.Hosts)), Settings: s.data.Settings}
+	copy(out.Hosts, s.data.Hosts)
+	for i := range out.Hosts {
+		secret, err := protectSecret(out.Hosts[i].Password)
+		if err != nil {
+			return storeData{}, err
+		}
+		out.Hosts[i].Password = secret
+		if secret, err = protectSecret(out.Hosts[i].KeyPassphrase); err != nil {
+			return storeData{}, err
+		}
+		out.Hosts[i].KeyPassphrase = secret
+	}
+	secret, err := protectSecret(out.Settings.AI.APIKey)
+	if err != nil {
+		return storeData{}, err
+	}
+	out.Settings.AI.APIKey = secret
+	return out, nil
 }
 
 func mergeSettings(def, cur Settings, m map[string]interface{}) Settings {
@@ -251,7 +292,11 @@ func mergeSettings(def, cur Settings, m map[string]interface{}) Settings {
 }
 
 func (s *Store) save() error {
-	raw, err := json.MarshalIndent(s.data, "", "  ")
+	onDisk, err := s.dataForDisk()
+	if err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(onDisk, "", "  ")
 	if err != nil {
 		return err
 	}
