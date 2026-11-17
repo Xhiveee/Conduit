@@ -1846,7 +1846,7 @@ kbd {
     border: 1px solid var(--border-strong); border-radius: var(--radius-control);
     padding: 0.25rem 0.75rem; font-size: 0.75rem;
     opacity: 0; pointer-events: none; transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
-    z-index: 5;
+    z-index: 3;
 }
 .ag-pill.show { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
 .ag-pill svg { width: 0.75rem; height: 0.75rem; }

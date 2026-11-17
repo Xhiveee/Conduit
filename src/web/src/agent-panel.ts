@@ -129,6 +129,8 @@ let pinned = true;
 let newCount = 0;
 let renderedChatId = '';
 let autoscrollQueued = false;
+let smoothToBottom = false;
+let smoothWatchdog = 0;
 
 function queueAutoscroll() {
     if (autoscrollQueued) return;
@@ -137,6 +139,15 @@ function queueAutoscroll() {
         autoscrollQueued = false;
         if (msgsEl && pinned) msgsEl.scrollTop = msgsEl.scrollHeight;
     });
+}
+
+function armSmoothWatchdog() {
+    window.clearTimeout(smoothWatchdog);
+    smoothWatchdog = window.setTimeout(() => {
+        if (!smoothToBottom) return;
+        smoothToBottom = false;
+        onMsgsScroll();
+    }, 320);
 }
 
 export function renderAgent() {
@@ -202,6 +213,7 @@ function buildChrome(el: HTMLElement) {
     msgsEl.addEventListener('scroll', onMsgsScroll, { passive: true });
     msgsEl.addEventListener('wheel', ev => {
         if (ev.deltaY < 0) {
+            smoothToBottom = false;
             pinned = false;
             updatePill();
         }
@@ -329,6 +341,16 @@ function agentTargetFallback(): string {
 function onMsgsScroll() {
     if (!msgsEl) return;
     const dist = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight;
+    if (smoothToBottom) {
+        if (dist <= 1) {
+            smoothToBottom = false;
+            window.clearTimeout(smoothWatchdog);
+        } else {
+            armSmoothWatchdog();
+        }
+        updateFades();
+        return;
+    }
     pinned = dist < 80;
     if (pinned) newCount = 0;
     updatePill();
@@ -350,10 +372,16 @@ function updatePill() {
 
 function scrollBottom(smooth: boolean) {
     if (!msgsEl) return;
-    msgsEl.scrollTo({ top: msgsEl.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     pinned = true;
     newCount = 0;
     updatePill();
+    if (!smooth) {
+        msgsEl.scrollTop = msgsEl.scrollHeight;
+        return;
+    }
+    smoothToBottom = true;
+    msgsEl.scrollTo({ top: msgsEl.scrollHeight, behavior: 'smooth' });
+    armSmoothWatchdog();
 }
 
 function syncMessages() {
@@ -369,6 +397,10 @@ function syncMessages() {
         renderedChatId = cid;
         msgEls.clear();
         msgsEl.innerHTML = '';
+        emptyEl = null;
+        thinkingEl = null;
+        smoothToBottom = false;
+        window.clearTimeout(smoothWatchdog);
         pinned = true;
         newCount = 0;
         updatePill();
@@ -382,7 +414,7 @@ function syncMessages() {
             msgEls.delete(id);
         }
     }
-    let added = false;
+    let added = 0;
     for (const m of entries) {
         const sig = msgSig(m);
         const rec = msgEls.get(m.id);
@@ -394,7 +426,7 @@ function syncMessages() {
         } else {
             msgEls.set(m.id, { el, sig });
             msgsEl.appendChild(el);
-            added = true;
+            added++;
         }
     }
     syncThinking(thinking);
@@ -408,7 +440,7 @@ function syncMessages() {
         emptyEl = null;
     }
     if (added && !pinned) {
-        newCount += 1;
+        newCount += added;
         updatePill();
     }
     if (pinned) queueAutoscroll();
@@ -878,12 +910,63 @@ function toolArgsPreview(t: ToolCard): string {
 let clSearch = '';
 let clFilter = false;
 let clSearchFocused = false;
+let clArchOpen = false;
 const clCollapsed = new Set<string>();
+let clListSig = '';
+
+function chatListModel() {
+    const hostTab = [...state.tabs].reverse().find(t => t.hostId && t.connected);
+    const hostId = hostTab?.hostId ?? '';
+    const filtering = clFilter && !!hostId;
+    const q = clSearch.trim().toLowerCase();
+    const hostName = (hid: string) => {
+        const h = state.hosts.find(x => x.id === hid);
+        return h ? (h.name || h.user + '@' + h.address) : '';
+    };
+    let chats = state.chatList.filter(c => !c.archived);
+    if (filtering) chats = chats.filter(c => c.hostId === hostId);
+    if (q) chats = chats.filter(c => (c.title || 'new chat').toLowerCase().includes(q) || (c.group || '').toLowerCase().includes(q));
+
+    const groups = new Map<string, typeof chats>();
+    for (const c of chats) {
+        const g = c.group || '';
+        if (!groups.has(g)) groups.set(g, []);
+        groups.get(g)!.push(c);
+    }
+    const groupNames = [...groups.keys()].filter(g => g).sort();
+    const archived = state.chatList.filter(c => c.archived && (!filtering || c.hostId === hostId) && (!q || (c.title || '').toLowerCase().includes(q)));
+    const rowSig = (c: main.ChatSummary) => [c.id, c.title, c.group, hostName(c.hostId), !!c.busy, relTime(c.updatedAt)];
+    const sig = JSON.stringify([
+        state.chatListLoading,
+        filtering ? hostId : '',
+        q,
+        [...clCollapsed].sort(),
+        clArchOpen,
+        state.activeChatId,
+        chats.map(rowSig),
+        archived.map(rowSig),
+    ]);
+    return { hostId, filtering, groups, groupNames, archived, hostName, sig };
+}
+
+function refreshChatListSig() {
+    clListSig = chatListModel().sig;
+}
 
 function syncChatList() {
     if (!listEl) return;
     listEl.classList.toggle('open', state.chatListOpen);
     if (!state.chatListOpen) return;
+    const model = chatListModel();
+    if (model.sig === clListSig) return;
+    clListSig = model.sig;
+
+    const prevScroll = listEl.querySelector('.cl-list-scroll') as HTMLElement | null;
+    const keepTop = prevScroll?.scrollTop ?? 0;
+    const active = document.activeElement as HTMLElement | null;
+    const searchFocused = !!active && active.classList.contains('cl-search');
+    const caret = searchFocused ? (active as HTMLInputElement).selectionStart : null;
+
     listEl.innerHTML = '';
 
     const top = document.createElement('div');
@@ -904,14 +987,11 @@ function syncChatList() {
     top.append(search);
     listEl.appendChild(top);
 
-    const hostTab = [...state.tabs].reverse().find(t => t.hostId && t.connected);
-    const hostId = hostTab?.hostId ?? '';
-    const filtering = clFilter && !!hostId;
     const filterRow = document.createElement('div');
     filterRow.className = 'cl-filter';
     const fs = document.createElement('span');
     fs.textContent = 'This server only';
-    const sw = uiSwitch(filtering, v => { clFilter = v; syncChatList(); });
+    const sw = uiSwitch(model.filtering, v => { clFilter = v; clListSig = ''; syncChatList(); });
     filterRow.append(fs, sw);
     listEl.appendChild(filterRow);
 
@@ -919,26 +999,8 @@ function syncChatList() {
     scroll.className = 'cl-list-scroll';
     listEl.appendChild(scroll);
 
-    const q = clSearch.trim().toLowerCase();
-    const hostName = (hid: string) => {
-        const h = state.hosts.find(x => x.id === hid);
-        return h ? (h.name || h.user + '@' + h.address) : '';
-    };
-    let chats = state.chatList.filter(c => !c.archived);
-    if (filtering) chats = chats.filter(c => c.hostId === hostId);
-    if (q) chats = chats.filter(c => (c.title || 'new chat').toLowerCase().includes(q) || (c.group || '').toLowerCase().includes(q));
-
-    const groups = new Map<string, typeof chats>();
-    for (const c of chats) {
-        const g = c.group || '';
-        if (!groups.has(g)) groups.set(g, []);
-        groups.get(g)!.push(c);
-    }
-    const groupNames = [...groups.keys()].filter(g => g).sort();
-    const renderSection = (name: string, items: typeof chats, forceCollapsed?: boolean) => {
+    const renderSection = (name: string, items: main.ChatSummary[], collapsed: boolean, key: string) => {
         if (!items.length) return;
-        const key = 'g:' + name;
-        const collapsed = forceCollapsed ?? clCollapsed.has(key);
         const sec = document.createElement('div');
         sec.className = 'cl-group';
         const head = document.createElement('button');
@@ -956,53 +1018,58 @@ function syncChatList() {
         body.className = 'cl-group-body' + (collapsed ? ' collapsed' : '');
         const inner = document.createElement('div');
         inner.className = 'cl-group-inner';
-        for (const c of items) inner.appendChild(chatRow(c, hostName));
+        for (const c of items) inner.appendChild(chatRow(c, model.hostName));
         body.appendChild(inner);
         head.onclick = () => {
             const nowCollapsed = body.classList.toggle('collapsed');
             if (nowCollapsed) clCollapsed.add(key); else clCollapsed.delete(key);
             head.firstElementChild?.replaceWith(icon(nowCollapsed ? 'chevron-right' : 'chevron-down', 12));
+            refreshChatListSig();
         };
         sec.append(head, body);
         scroll.appendChild(sec);
     };
-    renderSection('', groups.get('') ?? [], false);
-    for (const g of groupNames) renderSection(g, groups.get(g)!);
+    renderSection('', model.groups.get('') ?? [], clCollapsed.has('g:'), 'g:');
+    for (const g of model.groupNames) renderSection(g, model.groups.get(g)!, clCollapsed.has('g:' + g), 'g:' + g);
 
-    const archived = state.chatList.filter(c => c.archived && (!filtering || c.hostId === hostId) && (!q || (c.title || '').toLowerCase().includes(q)));
-    if (archived.length) {
+    if (model.archived.length) {
         const sec = document.createElement('div');
         sec.className = 'cl-group';
         const head = document.createElement('button');
         head.className = 'cl-group-head';
         head.type = 'button';
-        head.appendChild(icon('chevron-right', 12));
+        head.appendChild(icon(clArchOpen ? 'chevron-down' : 'chevron-right', 12));
         const gt = document.createElement('span');
         gt.textContent = 'Archived';
         head.appendChild(gt);
         const cnt = document.createElement('span');
         cnt.className = 'cl-count';
-        cnt.textContent = String(archived.length);
+        cnt.textContent = String(model.archived.length);
         head.appendChild(cnt);
         const body = document.createElement('div');
-        body.className = 'cl-group-body collapsed';
+        body.className = 'cl-group-body' + (clArchOpen ? '' : ' collapsed');
         const ainner = document.createElement('div');
         ainner.className = 'cl-group-inner';
-        for (const c of archived) ainner.appendChild(chatRow(c, hostName));
+        for (const c of model.archived) ainner.appendChild(chatRow(c, model.hostName));
         body.appendChild(ainner);
         head.onclick = () => {
-            const nowCollapsed = body.classList.toggle('collapsed');
-            clCollapsed.delete('g:__arch__');
-            if (!nowCollapsed) clCollapsed.add('g:__arch__');
-            head.firstElementChild?.replaceWith(icon(nowCollapsed ? 'chevron-right' : 'chevron-down', 12));
+            clArchOpen = !clArchOpen;
+            body.classList.toggle('collapsed', !clArchOpen);
+            head.firstElementChild?.replaceWith(icon(clArchOpen ? 'chevron-down' : 'chevron-right', 12));
+            refreshChatListSig();
         };
         sec.append(head, body);
         scroll.appendChild(sec);
     }
-    if (clSearchFocused) {
+
+    scroll.scrollTop = keepTop;
+    if (searchFocused || clSearchFocused) {
         const inp = listEl.querySelector('.cl-search') as HTMLInputElement | null;
-        inp?.focus();
-        inp?.setSelectionRange(inp.value.length, inp.value.length);
+        if (inp) {
+            inp.focus();
+            const pos = caret ?? inp.value.length;
+            inp.setSelectionRange(pos, pos);
+        }
     }
 }
 
