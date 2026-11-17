@@ -97,5 +97,4 @@ jobs:
             src/build/bin/Conduit.exe
             Conduit.exe.sha256
             LICENSE
-            THIRD_PARTY_NOTICES.md
           fail_on_unmatched_files: true
