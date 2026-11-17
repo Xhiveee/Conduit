@@ -344,6 +344,7 @@ function onMsgsScroll() {
     const top = msgsEl.scrollTop;
     const dist = msgsEl.scrollHeight - top - msgsEl.clientHeight;
     const movedUp = top < lastScrollTop - 1;
+    const movedDown = top > lastScrollTop + 1;
     lastScrollTop = top;
     if (smoothToBottom) {
         if (dist <= 1) {
@@ -357,14 +358,14 @@ function onMsgsScroll() {
     }
     if (dist <= 1) {
         pinned = true;
-    } else if (movedUp && dist >= 80) {
+    } else if (movedUp) {
         pinned = false;
-    } else if (dist < 80) {
+    } else if (!pinned && movedDown && dist < 80) {
         pinned = true;
     }
     if (pinned) {
         newCount = 0;
-        queueAutoscroll();
+        if (!movedUp && dist > 1) queueAutoscroll();
     }
     updatePill();
     updateFades();
