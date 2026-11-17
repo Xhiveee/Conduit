@@ -24,6 +24,24 @@ export namespace main {
 	        this.contextWindow = source["contextWindow"];
 	    }
 	}
+	export class AppInfo {
+	    version: string;
+	    dataDir: string;
+	    logPath: string;
+	    platform: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AppInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.dataDir = source["dataDir"];
+	        this.logPath = source["logPath"];
+	        this.platform = source["platform"];
+	    }
+	}
 	export class ChatLogEntry {
 	    kind: string;
 	    content: string;
@@ -79,6 +97,7 @@ export namespace main {
 	    usage: ChatUsage;
 	    busy: boolean;
 	    log: ChatLogEntry[];
+	    truncated: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ChatDetail(source);
@@ -96,6 +115,7 @@ export namespace main {
 	        this.usage = this.convertValues(source["usage"], ChatUsage);
 	        this.busy = source["busy"];
 	        this.log = this.convertValues(source["log"], ChatLogEntry);
+	        this.truncated = source["truncated"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

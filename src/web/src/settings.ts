@@ -1,4 +1,5 @@
 import * as App from '../wailsjs/go/main/App';
+import { BrowserOpenURL } from '../wailsjs/runtime/runtime';
 import { notify, applyAll, settingsOrDefault } from './state';
 import { BUILTIN_THEMES } from './themes';
 import { icon } from './icons';
@@ -9,6 +10,21 @@ import { openDialog } from './ui/dialog';
 import type { main } from '../wailsjs/go/models';
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+type AppInfo = {
+    version: string;
+    dataDir: string;
+    logPath: string;
+    platform: string;
+};
+
+// wails regenerates the bindings at build time; the local shape keeps tsc green before that
+const aboutApi = App as unknown as {
+    GetAppInfo(): Promise<AppInfo>;
+    OpenDataFolder(): Promise<void>;
+    OpenLogsFolder(): Promise<void>;
+    Diagnostics(): Promise<string>;
+};
 
 function persist() {
     if (saveTimer) clearTimeout(saveTimer);
@@ -37,6 +53,7 @@ const SECTIONS: SettingsSection[] = [
     { id: 'terminal', label: 'Terminal', render: renderTerminal },
     { id: 'agent', label: 'Agent', render: renderAgentSection },
     { id: 'keyboard', label: 'Keyboard', render: renderKeyboard },
+    { id: 'about', label: 'About', render: renderAbout },
 ];
 
 let settingsClose: (() => void) | null = null;
@@ -448,6 +465,100 @@ function renderKeyboard(pane: HTMLElement) {
     }
     g.appendChild(list);
     pane.appendChild(g);
+}
+
+function aboutValue(text: string): HTMLElement {
+    const el = document.createElement('span');
+    el.className = 'about-value';
+    el.textContent = text;
+    return el;
+}
+
+function aboutButton(label: string, onclick: () => void, primary = false): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn small' + (primary ? ' primary' : '');
+    b.textContent = label;
+    b.onclick = onclick;
+    return b;
+}
+
+function pathControl(value: HTMLElement, button: HTMLElement): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'about-pathbox';
+    value.classList.add('about-path', 'mono');
+    box.append(value, button);
+    return box;
+}
+
+async function copyDiagnostics() {
+    try {
+        const text = await aboutApi.Diagnostics();
+        await navigator.clipboard.writeText(text);
+        toastInfo(tr('Diagnostics copied'));
+    } catch (err) {
+        toastError(err);
+    }
+}
+
+function renderAbout(pane: HTMLElement) {
+    const g = group();
+
+    const head = document.createElement('div');
+    head.className = 'about-head';
+    const title = document.createElement('h3');
+    title.className = 'about-name';
+    title.textContent = 'Conduit';
+    const tagline = document.createElement('p');
+    tagline.className = 'about-tagline';
+    tagline.textContent = tr('Portable SSH client with a built-in AI agent.');
+    head.append(title, tagline);
+    g.appendChild(head);
+
+    const versionVal = aboutValue('…');
+    g.appendChild(row(tr('Version'), '', versionVal));
+
+    const platformVal = aboutValue('…');
+    g.appendChild(row(tr('Platform'), '', platformVal));
+
+    const repo = document.createElement('button');
+    repo.type = 'button';
+    repo.className = 'about-link';
+    repo.textContent = 'github.com/xhiveee/Conduit';
+    repo.onclick = () => BrowserOpenURL('https://github.com/xhiveee/Conduit');
+    g.appendChild(row(tr('Repository'), '', repo));
+
+    g.appendChild(row(tr('License'), '', aboutValue('MIT')));
+
+    const dataVal = aboutValue('…');
+    const dataBtn = aboutButton(tr('Open data folder'), () => { void aboutApi.OpenDataFolder().catch(toastError); });
+    g.appendChild(row(tr('Data folder'), '', pathControl(dataVal, dataBtn)));
+
+    const logVal = aboutValue('…');
+    const logBtn = aboutButton(tr('Open logs folder'), () => { void aboutApi.OpenLogsFolder().catch(toastError); });
+    g.appendChild(row(tr('Logs'), tr('Rotating log file; no terminal output, chats or API keys.'), pathControl(logVal, logBtn)));
+
+    const actions = document.createElement('div');
+    actions.className = 'about-actions';
+    actions.appendChild(aboutButton(tr('Copy diagnostics'), () => { void copyDiagnostics(); }, true));
+    g.appendChild(actions);
+
+    pane.appendChild(g);
+
+    void (async () => {
+        try {
+            const info = await aboutApi.GetAppInfo();
+            versionVal.textContent = info.version || 'dev';
+            platformVal.textContent = info.platform;
+            dataVal.textContent = info.dataDir;
+            dataVal.title = info.dataDir;
+            logVal.textContent = info.logPath;
+            logVal.title = info.logPath;
+        } catch {
+            versionVal.textContent = 'dev';
+            platformVal.textContent = '—';
+        }
+    })();
 }
 
 export function toggleSettings(sectionId?: string) {

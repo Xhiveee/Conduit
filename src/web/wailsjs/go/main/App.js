@@ -42,8 +42,16 @@ export function DeleteHost(arg1) {
   return window['go']['main']['App']['DeleteHost'](arg1);
 }
 
+export function Diagnostics() {
+  return window['go']['main']['App']['Diagnostics']();
+}
+
 export function Disconnect(arg1) {
   return window['go']['main']['App']['Disconnect'](arg1);
+}
+
+export function GetAppInfo() {
+  return window['go']['main']['App']['GetAppInfo']();
 }
 
 export function GetChat(arg1) {
@@ -74,6 +82,14 @@ export function ListSessions() {
   return window['go']['main']['App']['ListSessions']();
 }
 
+export function OpenDataFolder() {
+  return window['go']['main']['App']['OpenDataFolder']();
+}
+
+export function OpenLogsFolder() {
+  return window['go']['main']['App']['OpenLogsFolder']();
+}
+
 export function QuickConnect(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['QuickConnect'](arg1, arg2, arg3, arg4);
 }
@@ -96,6 +112,14 @@ export function SaveSettings(arg1) {
 
 export function ScreenReply(arg1, arg2) {
   return window['go']['main']['App']['ScreenReply'](arg1, arg2);
+}
+
+export function SessionHostKeyDecision(arg1, arg2) {
+  return window['go']['main']['App']['SessionHostKeyDecision'](arg1, arg2);
+}
+
+export function SessionHostKeyUpdate(arg1) {
+  return window['go']['main']['App']['SessionHostKeyUpdate'](arg1);
 }
 
 export function SetChatGroup(arg1, arg2) {

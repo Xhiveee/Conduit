@@ -1,4 +1,5 @@
 package main
+
 import (
 	"embed"
 	"errors"
@@ -17,6 +18,9 @@ import (
 var assets embed.FS
 
 const swRestore = 9
+
+// version is overridden at build time with -ldflags "-X main.version=v0.1.0".
+var version = "dev"
 
 var (
 	user32            = xwindows.NewLazySystemDLL("user32.dll")
@@ -87,7 +91,8 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	app := NewApp(store, chats)
+	app := NewApp(store, chats, version)
+	defer closeLog()
 	err = wails.Run(&options.App{
 		Title:     "Conduit",
 		Width:     1360,

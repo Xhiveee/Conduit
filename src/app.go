@@ -1,8 +1,12 @@
 package main
+
 import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	goruntime "runtime"
+	"strings"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -14,14 +18,20 @@ type App struct {
 	sessions *SessionManager
 	agent    *Agent
 	emitFn   func(name string, args ...interface{})
+	version  string
+	logPath  string
 }
 
-func NewApp(store *Store, chats *ChatStore) *App {
-	return &App{store: store, chats: chats}
+func NewApp(store *Store, chats *ChatStore, version string) *App {
+	return &App{store: store, chats: chats, version: version}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.logPath = initLog(dataDir())
+	logf("info", "Conduit %s starting (%s/%s)", a.version, goruntime.GOOS, goruntime.GOARCH)
+	logf("info", "data dir: %s", dataDir())
+	logf("info", "log file: %s", a.logPath)
 	a.emitFn = func(name string, args ...interface{}) {
 		runtime.EventsEmit(ctx, name, args...)
 	}
@@ -29,6 +39,9 @@ func (a *App) startup(ctx context.Context) {
 	a.sessions = NewSessionManager(a.store)
 	a.sessions.emit = a.emitFn
 	a.agent = NewAgent(a)
+	for _, w := range a.Warnings() {
+		logf("warn", "%s", w)
+	}
 }
 
 func (a *App) emit(name string, args ...interface{}) {
@@ -64,8 +77,83 @@ func (a *App) Warnings() []string {
 	return append(out, a.chats.Warnings()...)
 }
 
+type AppInfo struct {
+	Version  string `json:"version"`
+	DataDir  string `json:"dataDir"`
+	LogPath  string `json:"logPath"`
+	Platform string `json:"platform"`
+}
+
+func (a *App) GetAppInfo() AppInfo {
+	dir := dataDir()
+	return AppInfo{
+		Version:  a.version,
+		DataDir:  dir,
+		LogPath:  logPathFor(dir),
+		Platform: goruntime.GOOS + "/" + goruntime.GOARCH,
+	}
+}
+
+func (a *App) OpenDataFolder() {
+	openInExplorer(dataDir())
+}
+
+func (a *App) OpenLogsFolder() {
+	openInExplorer(logDirFor(dataDir()))
+}
+
+func openInExplorer(dir string) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		logf("error", "could not create folder %s: %v", dir, err)
+		return
+	}
+	// explorer.exe hands the path to an existing window and exits, so Start must not be waited on
+	_ = exec.Command("explorer.exe", dir).Start()
+}
+
+func (a *App) Diagnostics() string {
+	dir := dataDir()
+	log := a.logPath
+	if log == "" {
+		log = logPathFor(dir)
+	}
+	st := a.store.GetSettings()
+	lang := st.Language
+	if lang == "" {
+		lang = "auto"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Conduit %s\n", a.version)
+	fmt.Fprintf(&b, "Platform: %s/%s\n", goruntime.GOOS, goruntime.GOARCH)
+	fmt.Fprintf(&b, "Data dir: %s\n", dir)
+	fmt.Fprintf(&b, "Log file: %s\n", log)
+	if info, err := os.Stat(log); err == nil {
+		fmt.Fprintf(&b, "Log size: %d bytes\n", info.Size())
+	}
+	fmt.Fprintf(&b, "Theme: %s\n", st.ThemeID)
+	fmt.Fprintf(&b, "Language: %s\n", lang)
+	fmt.Fprintf(&b, "Font: %s %dpx\n", st.FontFamily, st.FontSize)
+	fmt.Fprintf(&b, "UI scale: %.2f\n", st.UIScale)
+	fmt.Fprintf(&b, "Command approvals: %v\n", st.AI.ApproveCommands)
+	warnings := a.Warnings()
+	if len(warnings) == 0 {
+		b.WriteString("Warnings: none\n")
+		return b.String()
+	}
+	b.WriteString("Warnings:\n")
+	for i, w := range warnings {
+		if i == 5 {
+			fmt.Fprintf(&b, "  (+%d more)\n", len(warnings)-5)
+			break
+		}
+		fmt.Fprintf(&b, "  - %s\n", w)
+	}
+	return b.String()
+}
+
 func (a *App) SaveSettings(st Settings) error {
 	if err := a.store.SaveSettings(st); err != nil {
+		logf("error", "settings save failed: %v", err)
 		return err
 	}
 	if a.agent != nil && !st.AI.ApproveCommands {
@@ -138,7 +226,12 @@ func (a *App) GetChat(id string) (ChatDetail, error) {
 	if log == nil {
 		log = []ChatLogEntry{}
 	}
-	return ChatDetail{ChatSummary: c.ChatSummary, Log: log}, nil
+	const maxLoadedLogEntries = 800
+	truncated := len(log) > maxLoadedLogEntries
+	if truncated {
+		log = log[len(log)-maxLoadedLogEntries:]
+	}
+	return ChatDetail{ChatSummary: c.ChatSummary, Log: log, Truncated: truncated}, nil
 }
 
 func (a *App) CreateChat(hostID string) (ChatSummary, error) {
@@ -185,6 +278,7 @@ func (a *App) setTheme(id string) error {
 	st := a.store.GetSettings()
 	st.ThemeID = id
 	if err := a.store.SaveSettings(st); err != nil {
+		logf("error", "theme save failed: %v", err)
 		return err
 	}
 	a.emit("settings:changed", st)
@@ -224,6 +318,7 @@ func (a *App) applyUISettingsPatch(p uiSettingsPatch) (Settings, error) {
 		st.AI.ContextWindow = *p.ContextWindow
 	}
 	if err := a.store.SaveSettings(st); err != nil {
+		logf("error", "ui settings save failed: %v", err)
 		return st, err
 	}
 	a.emit("settings:changed", st)

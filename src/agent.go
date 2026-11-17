@@ -1,4 +1,5 @@
 package main
+
 import (
 	"context"
 	"encoding/json"
@@ -143,6 +144,7 @@ func (a *Agent) contextSuffix(chat *Chat, activeSessionID string) string {
 func (a *Agent) run(ctx context.Context, chatID string, cfg AISettings, messages []chatMessage) {
 	defer func() {
 		if r := recover(); r != nil {
+			logf("error", "agent panic: %v", r)
 			a.logNote(chatID, fmt.Sprintf("agent crashed: %v", r))
 		}
 		a.mu.Lock()
@@ -162,6 +164,7 @@ func (a *Agent) run(ctx context.Context, chatID string, cfg AISettings, messages
 		a.app.emit("agent:thinking", chatID, false)
 		if err != nil {
 			if ctx.Err() == nil {
+				logf("error", "agent request failed: %s", err.Error())
 				a.logNote(chatID, "error: "+err.Error())
 				a.app.emit("agent:error", chatID, err.Error())
 			}
@@ -194,6 +197,7 @@ func (a *Agent) run(ctx context.Context, chatID string, cfg AISettings, messages
 		}
 	}
 	if err := a.app.chats.setMessages(chatID, full[1:]); err != nil {
+		logf("error", "agent chat save failed: %s", err.Error())
 		a.app.emit("agent:error", chatID, err.Error())
 	}
 }

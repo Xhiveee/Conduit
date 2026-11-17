@@ -22,7 +22,11 @@ export function DeleteChat(arg1:string):Promise<void>;
 
 export function DeleteHost(arg1:string):Promise<void>;
 
+export function Diagnostics():Promise<string>;
+
 export function Disconnect(arg1:string):Promise<void>;
+
+export function GetAppInfo():Promise<main.AppInfo>;
 
 export function GetChat(arg1:string):Promise<main.ChatDetail>;
 
@@ -38,6 +42,10 @@ export function ListKeys():Promise<Array<main.KeyInfo>>;
 
 export function ListSessions():Promise<Array<main.SessionInfo>>;
 
+export function OpenDataFolder():Promise<void>;
+
+export function OpenLogsFolder():Promise<void>;
+
 export function QuickConnect(arg1:string,arg2:string,arg3:number,arg4:number):Promise<string>;
 
 export function RenameChat(arg1:string,arg2:string):Promise<main.ChatSummary>;
@@ -49,6 +57,10 @@ export function SaveHost(arg1:main.Host):Promise<main.Host>;
 export function SaveSettings(arg1:main.Settings):Promise<void>;
 
 export function ScreenReply(arg1:string,arg2:string):Promise<void>;
+
+export function SessionHostKeyDecision(arg1:string,arg2:boolean):Promise<void>;
+
+export function SessionHostKeyUpdate(arg1:string):Promise<void>;
 
 export function SetChatGroup(arg1:string,arg2:string):Promise<main.ChatSummary>;
 
