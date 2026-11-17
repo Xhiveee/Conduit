@@ -1741,6 +1741,17 @@ kbd {
 .ag-chip.attached { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
 .ag-chip.attached:hover { background: var(--accent-soft); }
 .ag-head .ag-btn.active { color: var(--accent); background: var(--accent-soft); }
+.ag-head .ag-btn.danger { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.ag-full-access {
+    flex-shrink: 0;
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
+    color: var(--danger);
+    border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+    border-radius: 0.3125rem;
+    padding: 0.0625rem 0.3125rem;
+}
+.ag-full-access[hidden] { display: none; }
 
 .ag-msgs, .ag-chatlist, .ag-input textarea {
     scrollbar-width: none;

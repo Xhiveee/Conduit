@@ -2,7 +2,7 @@ import * as App from '../wailsjs/go/main/App';
 import { notify, applyAll, settingsOrDefault } from './state';
 import { BUILTIN_THEMES } from './themes';
 import { icon } from './icons';
-import { toastError } from './toast';
+import { toastError, toastInfo } from './toast';
 import { uiSelect, uiSwitch, uiSlider, uiNumber } from './ui';
 import { openDialog } from './ui/dialog';
 import type { main } from '../wailsjs/go/models';
@@ -337,7 +337,7 @@ function renderAgentSection(pane: HTMLElement) {
     ctxF.append(ctxL, ctxI);
     g.appendChild(ctxF);
 
-    g.appendChild(row('Approve commands', 'Ask before the agent runs commands or changes hosts', toggle(s.ai.approveCommands, v => { ai().approveCommands = v; persistAI(); })));
+    g.appendChild(row('Full access', 'Run commands and change hosts without asking for approval', toggle(fullAccessEnabled(), v => { void setFullAccess(v); })));
 
     const instI = document.createElement('textarea');
     instI.value = s.ai.instructions;
@@ -356,6 +356,25 @@ function renderAgentSection(pane: HTMLElement) {
 
 function persistAI() {
     persist();
+}
+
+export function fullAccessEnabled(): boolean {
+    return !settingsOrDefault().ai.approveCommands;
+}
+
+export async function setFullAccess(enabled: boolean): Promise<void> {
+    const s = settingsOrDefault();
+    if (s.ai.approveCommands === !enabled) return;
+    s.ai.approveCommands = !enabled;
+    notify();
+    try {
+        await App.SaveSettings(s);
+        toastInfo(enabled ? 'Full access on — commands run without approval' : 'Approvals on');
+    } catch (err) {
+        s.ai.approveCommands = !s.ai.approveCommands;
+        notify();
+        toastError(err);
+    }
 }
 
 const KEYBOARD_SHORTCUTS: [string, string][] = [

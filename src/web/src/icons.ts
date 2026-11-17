@@ -7,6 +7,7 @@ import {
     CircleDot, ArrowRight, Info, FileKey, CopyPlus, MoreHorizontal,
     Clipboard, ChevronUp, MessagesSquare, Ellipsis, CornerDownLeft, ArrowDown,
     Clock, Folder, Archive, ArchiveRestore, Unlink, MessageSquare,
+    ShieldCheck, ShieldOff,
 } from 'lucide';
 
 const MAP: Record<string, any> = {
@@ -25,6 +26,7 @@ const MAP: Record<string, any> = {
     'corner-down-left': CornerDownLeft, 'arrow-down': ArrowDown, clock: Clock,
     folder: Folder, archive: Archive, 'archive-restore': ArchiveRestore,
     unlink: Unlink, 'message-square': MessageSquare,
+    'shield-check': ShieldCheck, 'shield-off': ShieldOff,
 };
 
 export function icon(name: string, size = 16): SVGElement {

@@ -423,6 +423,9 @@ function wireEvents() {
         if (e.args !== undefined) t.args = e.args;
         if (e.status) t.status = e.status;
         if (e.result !== undefined) t.result = e.result;
+        if (t.status === 'pending_approval' && state.settings && !state.settings.ai.approveCommands) {
+            void App.AgentApprove(cid, true);
+        }
         notify();
     });
     EventsOn('agent:busy', (chatId: string, busy: boolean) => {

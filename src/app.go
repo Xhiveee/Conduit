@@ -63,6 +63,9 @@ func (a *App) SaveSettings(st Settings) error {
 	if err := a.store.SaveSettings(st); err != nil {
 		return err
 	}
+	if a.agent != nil && !st.AI.ApproveCommands {
+		a.agent.approveAll()
+	}
 	a.emit("settings:changed", st)
 	return nil
 }

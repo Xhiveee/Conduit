@@ -181,7 +181,7 @@ func (a *Agent) run(ctx context.Context, chatID string, cfg AISettings, messages
 			a.logEntry(chatID, ChatLogEntry{Kind: "assistant", Content: msg.Content})
 		}
 		for _, call := range msg.ToolCalls {
-			result := a.execTool(ctx, chatID, cfg, call)
+			result := a.execTool(ctx, chatID, call)
 			full = append(full, chatMessage{
 				Role:       "tool",
 				ToolCallID: call.ID,
@@ -264,6 +264,21 @@ func (a *Agent) approve(callID string, approved bool) {
 	}
 }
 
+func (a *Agent) approveAll() {
+	a.mu.Lock()
+	chans := make([]chan bool, 0, len(a.pending))
+	for _, ch := range a.pending {
+		chans = append(chans, ch)
+	}
+	a.mu.Unlock()
+	for _, ch := range chans {
+		select {
+		case ch <- true:
+		default:
+		}
+	}
+}
+
 func needsApproval(name string) bool {
 	switch name {
 	case "run_command", "send_keys", "delete_host", "disconnect", "update_host":
@@ -290,14 +305,14 @@ func (a *Agent) waitApproval(ctx context.Context, callID string) (bool, error) {
 	}
 }
 
-func (a *Agent) execTool(ctx context.Context, chatID string, cfg AISettings, call llmToolCall) string {
+func (a *Agent) execTool(ctx context.Context, chatID string, call llmToolCall) string {
 	name := call.Function.Name
 	raw := call.Function.Arguments
 	if strings.TrimSpace(raw) == "" {
 		raw = "{}"
 	}
 	toolEntry := ChatLogEntry{Kind: "tool", CallID: call.ID, Name: name, Args: raw, TS: time.Now().UnixMilli()}
-	if needsApproval(name) && cfg.ApproveCommands {
+	if needsApproval(name) && a.app.store.GetSettings().AI.ApproveCommands {
 		toolEntry.Status = "pending_approval"
 		a.logTool(chatID, toolEntry)
 		ok, err := a.waitApproval(ctx, call.ID)

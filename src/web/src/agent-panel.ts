@@ -23,7 +23,7 @@ import {
 import { icon } from './icons';
 import { toastError } from './toast';
 import type { main } from '../wailsjs/go/models';
-import { toggleSettings } from './settings';
+import { toggleSettings, fullAccessEnabled, setFullAccess } from './settings';
 import { contextMenuAt, showMenuAt, confirmDialog, promptDialog, uiSwitch, type MenuEntry } from './ui';
 
 hljs.registerLanguage('bash', bash);
@@ -124,6 +124,8 @@ let usageEl: HTMLElement | null = null;
 let sendBtn: HTMLButtonElement | null = null;
 let emptyEl: HTMLElement | null = null;
 let chatBtn: HTMLButtonElement | null = null;
+let accessBtn: HTMLButtonElement | null = null;
+let accessBadge: HTMLElement | null = null;
 const msgEls = new Map<number, { el: HTMLElement; sig: string }>();
 let pinned = true;
 let newCount = 0;
@@ -195,7 +197,11 @@ function buildChrome(el: HTMLElement) {
     moreBtn.dataset.tip = 'Chat actions';
     moreBtn.appendChild(icon('ellipsis', 15));
     moreBtn.onclick = ev => chatMenu(ev);
-    head.append(titleWrap, modelEl, chatBtn, newBtn, moreBtn);
+    accessBtn = document.createElement('button');
+    accessBtn.className = 'ag-btn';
+    accessBtn.type = 'button';
+    accessBtn.onclick = () => { void toggleFullAccess(); };
+    head.append(titleWrap, modelEl, accessBtn, chatBtn, newBtn, moreBtn);
     el.appendChild(head);
 
     const target = document.createElement('div');
@@ -204,7 +210,11 @@ function buildChrome(el: HTMLElement) {
     tlabel.className = 'ag-target-label';
     tlabel.textContent = 'Target: ';
     targetVal = document.createElement('b');
-    target.append(tlabel, chipEl, targetVal);
+    accessBadge = document.createElement('span');
+    accessBadge.className = 'ag-full-access';
+    accessBadge.textContent = 'full access';
+    accessBadge.hidden = true;
+    target.append(tlabel, chipEl, targetVal, accessBadge);
     el.appendChild(target);
 
     const body = document.createElement('div');
@@ -314,6 +324,14 @@ function updateChrome() {
     const targetTab = state.tabs.find(t => t.sessionId === tid);
     if (targetVal) targetVal.textContent = targetTab ? targetTab.title : 'none';
     if (chatBtn) chatBtn.classList.toggle('active', state.chatListOpen);
+    const full = fullAccessEnabled();
+    if (accessBtn) {
+        accessBtn.innerHTML = '';
+        accessBtn.appendChild(icon(full ? 'shield-off' : 'shield-check', 15));
+        accessBtn.classList.toggle('danger', full);
+        accessBtn.dataset.tip = full ? 'Full access on — commands run without approval' : 'Full access — run commands without approval';
+    }
+    if (accessBadge) accessBadge.hidden = !full;
 
     if (sendBtn) {
         sendBtn.innerHTML = '';
@@ -526,6 +544,20 @@ async function createChat(hostId = '') {
     } catch (err) {
         toastError(err);
     }
+}
+
+async function toggleFullAccess() {
+    if (fullAccessEnabled()) {
+        await setFullAccess(false);
+        return;
+    }
+    const ok = await confirmDialog({
+        title: 'Enable full access',
+        message: 'The agent will run commands and change hosts without asking for approval. Continue?',
+        confirmLabel: 'Enable',
+        danger: true,
+    });
+    if (ok) await setFullAccess(true);
 }
 
 function chatMenu(ev: MouseEvent) {
