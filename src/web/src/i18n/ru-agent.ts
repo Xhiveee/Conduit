@@ -92,4 +92,8 @@ export const ruAgent: Record<string, string> = {
     'This server only': 'Только этот сервер',
     'Archived': 'Архив',
     'Open': 'Открыть',
+    'Enable the agent': 'Включить агента',
+    'The agent sends your messages, chat history and the terminal output it reads to the configured LLM endpoint. Continue?': 'Агент отправляет ваши сообщения, историю чата и прочитанный вывод терминала на настроенный LLM-endpoint. Продолжить?',
+    'Continue': 'Продолжить',
+    'Earlier messages are hidden to keep the chat responsive.': 'Ранние сообщения скрыты, чтобы чат отвечал быстро.',
 };

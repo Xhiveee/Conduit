@@ -1,4 +1,5 @@
 package main
+
 import (
 	"encoding/json"
 	"fmt"
@@ -50,7 +51,8 @@ type Chat struct {
 
 type ChatDetail struct {
 	ChatSummary
-	Log []ChatLogEntry `json:"log"`
+	Log       []ChatLogEntry `json:"log"`
+	Truncated bool           `json:"truncated"`
 }
 
 type ChatStore struct {

@@ -727,9 +727,39 @@ function fmtNum(n: number): string {
     return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
 }
 
+const AI_CONSENT_KEY = 'conduit.aiConsent';
+
+function aiConsentGiven(): boolean {
+    try {
+        return localStorage.getItem(AI_CONSENT_KEY) === '1';
+    } catch {
+        return true;
+    }
+}
+
+async function requestAiConsent(): Promise<boolean> {
+    const ok = await confirmDialog({
+        title: tr('Enable the agent'),
+        message: tr('The agent sends your messages, chat history and the terminal output it reads to the configured LLM endpoint. Continue?'),
+        confirmLabel: tr('Continue'),
+    });
+    if (ok) {
+        try {
+            localStorage.setItem(AI_CONSENT_KEY, '1');
+        } catch {
+            return true;
+        }
+    }
+    return ok;
+}
+
 function sendAgentMessage(text: string) {
     const t = text.trim();
     if (!t) return;
+    if (!aiConsentGiven()) {
+        void requestAiConsent().then(ok => { if (ok) sendAgentMessage(text); });
+        return;
+    }
     let chatId = state.activeChatId;
     if (inputEl) {
         inputEl.value = '';
