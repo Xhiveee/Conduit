@@ -256,6 +256,11 @@ func (m *SessionManager) connect(h Host, cols, rows int) (string, error) {
 }
 
 func (s *Session) pump(r io.Reader) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			s.finish("Session error", fmt.Sprintf("internal error: %v", rec))
+		}
+	}()
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := r.Read(buf)
@@ -295,6 +300,11 @@ func (s *Session) subscribe() (<-chan []byte, func()) {
 }
 
 func (s *Session) wait() {
+	defer func() {
+		if rec := recover(); rec != nil {
+			s.finish("Session error", fmt.Sprintf("internal error: %v", rec))
+		}
+	}()
 	err := s.sshSession.Wait()
 	if err != nil {
 		human, raw := classifyCloseError(err)
@@ -323,6 +333,11 @@ func classifyCloseError(err error) (human, raw string) {
 }
 
 func (s *Session) keepalive() {
+	defer func() {
+		if rec := recover(); rec != nil {
+			return
+		}
+	}()
 	t := time.NewTicker(keepaliveEvery)
 	defer t.Stop()
 	for {

@@ -142,6 +142,9 @@ func (a *Agent) contextSuffix(chat *Chat, activeSessionID string) string {
 
 func (a *Agent) run(ctx context.Context, chatID string, cfg AISettings, messages []chatMessage) {
 	defer func() {
+		if r := recover(); r != nil {
+			a.logNote(chatID, fmt.Sprintf("agent crashed: %v", r))
+		}
 		a.mu.Lock()
 		delete(a.runs, chatID)
 		a.mu.Unlock()
