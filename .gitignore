@@ -1,4 +1,5 @@
 build/bin
+src/build/bin
 .tools
 data
 node_modules
