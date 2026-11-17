@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -70,9 +71,10 @@ type storeData struct {
 }
 
 type Store struct {
-	mu   sync.Mutex
-	path string
-	data storeData
+	mu       sync.Mutex
+	path     string
+	data     storeData
+	warnings []string
 }
 
 func dataDir() string {
@@ -138,7 +140,15 @@ func (s *Store) load() error {
 		return err
 	}
 	if err := json.Unmarshal(raw, &s.data); err != nil {
-		return fmt.Errorf("conduit.json is corrupted: %w", err)
+		backup := fmt.Sprintf("%s.corrupt-%d", s.path, time.Now().Unix())
+		if renameErr := os.Rename(s.path, backup); renameErr != nil {
+			s.data = storeData{Settings: defaultSettings()}
+			s.warnings = append(s.warnings, fmt.Sprintf("settings were corrupted and could not be backed up: %v", renameErr))
+			return nil
+		}
+		s.data = storeData{Settings: defaultSettings()}
+		s.warnings = append(s.warnings, fmt.Sprintf("settings were corrupted and reset (backup: %s)", filepath.Base(backup)))
+		return nil
 	}
 	var top struct {
 		Settings json.RawMessage `json:"settings"`
@@ -303,6 +313,12 @@ func (s *Store) GetSettings() Settings {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.data.Settings
+}
+
+func (s *Store) Warnings() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.warnings...)
 }
 
 func (s *Store) SaveSettings(st Settings) error {

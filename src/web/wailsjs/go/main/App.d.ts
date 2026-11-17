@@ -52,4 +52,6 @@ export function ScreenReply(arg1:string,arg2:string):Promise<void>;
 
 export function SetChatGroup(arg1:string,arg2:string):Promise<main.ChatSummary>;
 
+export function Warnings():Promise<Array<string>>;
+
 export function Write(arg1:string,arg2:string):Promise<void>;

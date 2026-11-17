@@ -54,10 +54,11 @@ type ChatDetail struct {
 }
 
 type ChatStore struct {
-	mu    sync.Mutex
-	dir   string
-	chats map[string]*Chat
-	emit  func(name string, args ...interface{})
+	mu       sync.Mutex
+	dir      string
+	chats    map[string]*Chat
+	emit     func(name string, args ...interface{})
+	warnings []string
 }
 
 func NewChatStore() (*ChatStore, error) {
@@ -66,6 +67,7 @@ func NewChatStore() (*ChatStore, error) {
 		return nil, err
 	}
 	cs := &ChatStore{dir: dir, chats: make(map[string]*Chat)}
+	corruptDir := filepath.Join(dir, "corrupt")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -74,13 +76,21 @@ func NewChatStore() (*ChatStore, error) {
 		if e.IsDir() || filepath.Ext(e.Name()) != ".json" {
 			continue
 		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		path := filepath.Join(dir, e.Name())
+		raw, err := os.ReadFile(path)
 		if err != nil {
-			return nil, err
+			cs.warnings = append(cs.warnings, fmt.Sprintf("chat file %s could not be read: %v", e.Name(), err))
+			continue
 		}
 		var c Chat
 		if err := json.Unmarshal(raw, &c); err != nil {
-			return nil, fmt.Errorf("chat file %s is corrupted: %w", e.Name(), err)
+			if mkErr := os.MkdirAll(corruptDir, 0o755); mkErr == nil {
+				_ = os.Rename(path, filepath.Join(corruptDir, e.Name()))
+				cs.warnings = append(cs.warnings, fmt.Sprintf("chat file %s was corrupted and moved to corrupt/%s", e.Name(), e.Name()))
+			} else {
+				cs.warnings = append(cs.warnings, fmt.Sprintf("chat file %s is corrupted and was skipped", e.Name()))
+			}
+			continue
 		}
 		if c.ID == "" {
 			c.ID = strings.TrimSuffix(e.Name(), ".json")
@@ -89,6 +99,12 @@ func NewChatStore() (*ChatStore, error) {
 		cs.chats[c.ID] = &c
 	}
 	return cs, nil
+}
+
+func (cs *ChatStore) Warnings() []string {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+	return append([]string(nil), cs.warnings...)
 }
 
 func (cs *ChatStore) setEmit(fn func(name string, args ...interface{})) {

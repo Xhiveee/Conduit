@@ -59,6 +59,11 @@ func (a *App) GetSettings() Settings {
 	return a.store.GetSettings()
 }
 
+func (a *App) Warnings() []string {
+	out := a.store.Warnings()
+	return append(out, a.chats.Warnings()...)
+}
+
 func (a *App) SaveSettings(st Settings) error {
 	if err := a.store.SaveSettings(st); err != nil {
 		return err

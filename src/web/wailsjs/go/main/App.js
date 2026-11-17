@@ -102,6 +102,10 @@ export function SetChatGroup(arg1, arg2) {
   return window['go']['main']['App']['SetChatGroup'](arg1, arg2);
 }
 
+export function Warnings() {
+  return window['go']['main']['App']['Warnings']();
+}
+
 export function Write(arg1, arg2) {
   return window['go']['main']['App']['Write'](arg1, arg2);
 }

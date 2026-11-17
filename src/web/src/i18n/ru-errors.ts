@@ -16,6 +16,12 @@ export const ruErrors: Record<string, string> = {
 export const ruErrorRules: [RegExp, string][] = [
     [/^conduit\.json is corrupted:/, 'Файл conduit.json повреждён:'],
     [/^chat file (.*) is corrupted:/, 'Файл чата $1 повреждён:'],
+    [/^settings were corrupted and reset/, 'Настройки были повреждены и сброшены'],
+    [/^settings were corrupted and could not be backed up/, 'Настройки повреждены, резервную копию создать не удалось'],
+    [/^chat file (.*) was corrupted and moved to corrupt\//, 'Файл чата $1 повреждён и перемещён в corrupt/'],
+    [/^chat file (.*) is corrupted and was skipped/, 'Файл чата $1 повреждён и пропущен'],
+    [/^chat file (.*) could not be read/, 'Не удалось прочитать файл чата $1'],
+    [/^agent crashed:/, 'Агент аварийно завершил работу:'],
     [/^unknown theme/, 'Неизвестная тема'],
     [/^unknown tool/, 'Неизвестный инструмент'],
     [/^missing host in/, 'Не найден хост в'],

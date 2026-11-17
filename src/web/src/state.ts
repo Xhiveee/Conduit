@@ -1,12 +1,12 @@
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
-import { applyLanguage, localizeShell, tr } from './i18n';
+import { applyLanguage, localizeShell, tr, translateError } from './i18n';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import * as App from '../wailsjs/go/main/App';
 import type { main } from '../wailsjs/go/models';
 import { applyTheme, currentXtermTheme, resolveTheme } from './themes';
-import { toastError } from './toast';
+import { toastError, toastInfo } from './toast';
 import { promptDialog } from './ui/dialog';
 
 export interface Tab {
@@ -113,12 +113,13 @@ export function nextMsgId(): number {
 }
 
 export async function init() {
-    const [settings, hosts, keys, sessions, chats] = await Promise.all([
+    const [settings, hosts, keys, sessions, chats, warnings] = await Promise.all([
         App.GetSettings(),
         App.ListHosts(),
         App.ListKeys(),
         App.ListSessions(),
         App.ListChats(),
+        App.Warnings(),
     ]);
     state.settings = settings;
     state.hosts = hosts;
@@ -132,6 +133,9 @@ export async function init() {
     wireEvents();
     state.booted = true;
     notify();
+    if (warnings.length) {
+        window.setTimeout(() => warnings.forEach(w => toastInfo(translateError(w))), 700);
+    }
     if (state.activeChatId) void loadChat(state.activeChatId);
 }
 
