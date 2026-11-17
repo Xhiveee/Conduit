@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Build and test (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache: true
+          cache-dependency-path: src/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+
+      # The Go package embeds src/web/dist via go:embed, so the frontend must be built before any Go step.
+      - name: Install frontend dependencies
+        working-directory: src/web
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: src/web
+        run: npm run build
+
+      - name: gofmt
+        working-directory: src
+        shell: pwsh
+        run: |
+          $dirty = @(
+            gofmt -l . | Where-Object { $_ -and $_ -notmatch '(^|[\\/])(node_modules|dist|build)([\\/]|$)' }
+          )
+          if ($dirty.Count -gt 0) {
+            $dirty | ForEach-Object { Write-Host "::error file=$_::gofmt required" }
+            exit 1
+          }
+          Write-Host 'gofmt: clean'
+
+      - name: go vet
+        working-directory: src
+        run: go vet ./...
+
+      - name: go test
+        working-directory: src
+        run: go test ./...
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+
+      - name: Add Go bin to PATH
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_PATH -Value (Join-Path (go env GOPATH) 'bin')
+
+      - name: Build Conduit.exe
+        working-directory: src
+        run: wails build -s -o Conduit.exe
+
+      - name: Upload Conduit.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: Conduit-windows-amd64
+          path: src/build/bin/Conduit.exe
+          if-no-files-found: error
+          retention-days: 14

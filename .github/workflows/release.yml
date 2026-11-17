@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Publish release
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache: true
+          cache-dependency-path: src/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/web/package-lock.json
+
+      # The Go package embeds src/web/dist via go:embed, so the frontend must be built before any Go step.
+      - name: Install frontend dependencies
+        working-directory: src/web
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: src/web
+        run: npm run build
+
+      - name: go vet
+        working-directory: src
+        run: go vet ./...
+
+      - name: go test
+        working-directory: src
+        run: go test ./...
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.17.1
+
+      - name: Add Go bin to PATH
+        shell: pwsh
+        run: Add-Content -Path $env:GITHUB_PATH -Value (Join-Path (go env GOPATH) 'bin')
+
+      - name: Build Conduit.exe
+        working-directory: src
+        run: wails build -s -o Conduit.exe -ldflags "-X main.version=${{ github.ref_name }}"
+
+      - name: Write SHA256 checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash -Path 'src/build/bin/Conduit.exe' -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -Path 'Conduit.exe.sha256' -Value "$hash  Conduit.exe" -Encoding ascii
+          Get-Content 'Conduit.exe.sha256'
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Conduit ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          body: |
+            Портативный SSH-клиент для Windows со встроенным ИИ-агентом.
+
+            ## Что внутри
+
+            - SSH-сессии: пароль, приватный ключ, ssh-agent Windows, импорт хостов из `~/.ssh/config`.
+            - Вкладки терминала на xterm.js: поиск, переподключение, дублирование сессий.
+            - ИИ-агент: команды в терминале, чтение экрана, работа с хостами и настройками; подтверждение команд по умолчанию и режим полного доступа.
+            - Тёмная и светлая темы, русский и английский языки.
+
+            ## Установка
+
+            Распакуйте архив с `Conduit.exe` и запустите его — установка не требуется. Данные (`data/`) создаются рядом с exe.
+
+            Требования: Windows 10/11 с Microsoft Edge WebView2 Runtime (на Windows 11 уже установлен).
+
+            ## Подпись и SmartScreen
+
+            Сборка не подписана, поэтому SmartScreen может предупредить о неизвестном издателе: «Подробнее» → «Выполнить в любом случае».
+
+            Проверка файла: `Get-FileHash .\Conduit.exe -Algorithm SHA256` должен совпасть с содержимым `Conduit.exe.sha256`.
+          files: |
+            src/build/bin/Conduit.exe
+            Conduit.exe.sha256
+            LICENSE
+            THIRD_PARTY_NOTICES.md
+          fail_on_unmatched_files: true

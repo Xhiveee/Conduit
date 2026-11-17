@@ -20,4 +20,5 @@ node_modules
 src/web/dist
 src/web/.vite
 src/web/package.json.md5
-/conduit.exe
+conduit.exe
+*.sha256
