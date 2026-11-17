@@ -372,15 +372,20 @@ function onMsgsScroll() {
 
 function updatePill() {
     if (!pillEl) return;
-    const show = !pinned && newCount > 0;
+    const show = !pinned;
     pillEl.classList.toggle('show', show);
     pillEl.innerHTML = '';
-    if (show) {
-        pillEl.appendChild(icon('arrow-down', 12));
-        const sp = document.createElement('span');
+    if (!show) return;
+    pillEl.appendChild(icon('arrow-down', 12));
+    const sp = document.createElement('span');
+    if (newCount > 0) {
         sp.textContent = newCount + (newCount === 1 ? ' new message' : ' new messages');
-        pillEl.append(sp);
+        pillEl.dataset.tip = 'Jump to the newest message and follow the agent';
+    } else {
+        sp.textContent = 'Resume autoscroll';
+        pillEl.dataset.tip = 'Jump to the newest message and follow the agent again';
     }
+    pillEl.append(sp);
 }
 
 function scrollBottom(smooth: boolean) {
@@ -700,6 +705,9 @@ function sendAgentMessage(text: string) {
         return;
     }
     pinned = true;
+    newCount = 0;
+    updatePill();
+    queueAutoscroll();
     App.AgentSend(chatId, t, chatTargetSession(chatId)).catch(err => {
         toastError(err);
         restoreInput(t);
