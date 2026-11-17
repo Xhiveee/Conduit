@@ -1,4 +1,5 @@
 import { icon } from '../icons';
+import { tr } from '../i18n';
 import { pushLayer } from './layers';
 import { toastError } from '../toast';
 
@@ -171,17 +172,17 @@ function editMenuFor(target: HTMLElement, x: number, y: number) {
         : (el as HTMLInputElement).value.substring((el as HTMLInputElement).selectionStart ?? 0, (el as HTMLInputElement).selectionEnd ?? 0);
     const hasSel = sel.length > 0;
     showMenuAt([
-        { label: 'Cut', shortcut: 'Ctrl+X', disabled: !hasSel, onSelect: () => { document.execCommand('cut'); } },
-        { label: 'Copy', shortcut: 'Ctrl+C', disabled: !hasSel, onSelect: () => { document.execCommand('copy'); } },
+        { label: tr('Cut'), shortcut: 'Ctrl+X', disabled: !hasSel, onSelect: () => { document.execCommand('cut'); } },
+        { label: tr('Copy'), shortcut: 'Ctrl+C', disabled: !hasSel, onSelect: () => { document.execCommand('copy'); } },
         {
-            label: 'Paste', shortcut: 'Ctrl+V', onSelect: () => {
+            label: tr('Paste'), shortcut: 'Ctrl+V', onSelect: () => {
                 navigator.clipboard.readText().then(t => {
                     if (t) document.execCommand('insertText', false, t);
                 }).catch(toastError);
             },
         },
         { sep: true },
-        { label: 'Select all', shortcut: 'Ctrl+A', onSelect: () => { document.execCommand('selectAll'); } },
+        { label: tr('Select all'), shortcut: 'Ctrl+A', onSelect: () => { document.execCommand('selectAll'); } },
     ], x, y, '11rem');
 }
 

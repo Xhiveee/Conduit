@@ -2,6 +2,7 @@ import * as App from '../wailsjs/go/main/App';
 import type { main } from '../wailsjs/go/models';
 import { state, notify, refreshHosts } from './state';
 import { icon } from './icons';
+import { tr } from './i18n';
 import { toastError } from './toast';
 import { uiSelect, uiNumber } from './ui';
 import { openDialog } from './ui/dialog';
@@ -15,7 +16,7 @@ export function openHostEditor(host: main.Host | null) {
     const head = document.createElement('div');
     head.className = 'modal-head';
     const h2 = document.createElement('h2');
-    h2.textContent = host ? 'Edit host' : 'New host';
+    h2.textContent = host ? tr('Edit host') : tr('New host');
     const closeBtn = document.createElement('button');
     closeBtn.className = 'x';
     closeBtn.type = 'button';
@@ -40,19 +41,19 @@ export function openHostEditor(host: main.Host | null) {
 
     const nameI = document.createElement('input');
     nameI.value = host?.name ?? '';
-    nameI.placeholder = 'Production server';
-    field('Name', nameI);
+    nameI.placeholder = tr('Production server');
+    field(tr('Name'), nameI);
 
     const groupI = document.createElement('input');
     groupI.value = host?.group ?? '';
-    groupI.placeholder = 'work';
-    field('Group', groupI);
+    groupI.placeholder = tr('work');
+    field(tr('Group'), groupI);
 
     const addrI = document.createElement('input');
     addrI.value = host?.address ?? '';
     addrI.placeholder = '192.168.1.10 or example.com';
     addrI.className = 'mono';
-    field('Address', addrI);
+    field(tr('Address'), addrI);
 
     let portVal = host?.port || 22;
     const portI = uiNumber({
@@ -62,37 +63,37 @@ export function openHostEditor(host: main.Host | null) {
         step: 1,
         onChange: v => { portVal = v; },
     });
-    field('Port', portI);
+    field(tr('Port'), portI);
 
     const userI = document.createElement('input');
     userI.value = host?.user ?? '';
     userI.placeholder = 'root';
-    field('User', userI);
+    field(tr('User'), userI);
 
     let authVal = host?.authMethod || 'agent';
     const authSel = uiSelect({
         value: authVal,
         options: [
-            { value: 'agent', label: 'SSH agent', description: 'Keys from ~/.ssh and the agent' },
-            { value: 'key', label: 'Private key', description: 'A key file on this machine' },
-            { value: 'password', label: 'Password', description: 'Password authentication' },
+            { value: 'agent', label: tr('SSH agent'), description: tr('Keys from ~/.ssh and the agent') },
+            { value: 'key', label: tr('Private key'), description: tr('A key file on this machine') },
+            { value: 'password', label: tr('Password'), description: tr('Password authentication') },
         ],
         onChange: v => {
             authVal = v;
             syncAuth();
         },
     });
-    field('Auth method', authSel);
+    field(tr('Auth method'), authSel);
 
     const keyOptions: { value: string; label: string; description?: string }[] = [
-        { value: '', label: 'Select a key' },
-        { value: '__custom__', label: 'Custom path', description: 'Enter a path manually' },
+        { value: '', label: tr('Select a key') },
+        { value: '__custom__', label: tr('Custom path'), description: tr('Enter a path manually') },
     ];
     for (const k of state.keys.filter(k => k.source === 'file')) {
         keyOptions.push({
             value: k.path,
             label: k.comment || k.type || k.path.split(/[\\/]/).pop() || k.path,
-            description: (k.encrypted ? 'encrypted · ' : '') + (k.fingerprint ? k.fingerprint.slice(0, 20) + '…' : ''),
+            description: (k.encrypted ? tr('encrypted') + ' · ' : '') + (k.fingerprint ? k.fingerprint.slice(0, 20) + '…' : ''),
         });
     }
     if (host?.keyPath && !state.keys.some(k => k.path === host.keyPath)) {
@@ -107,25 +108,25 @@ export function openHostEditor(host: main.Host | null) {
             syncAuth();
         },
     });
-    const keyField = field('Key file', keySel);
+    const keyField = field(tr('Key file'), keySel);
 
     const keyPathI = document.createElement('input');
     keyPathI.value = host?.keyPath ?? '';
     keyPathI.className = 'mono';
     keyPathI.placeholder = 'C:\\Users\\you\\.ssh\\id_ed25519';
-    const keyPathField = field('Custom key path', keyPathI);
+    const keyPathField = field(tr('Custom key path'), keyPathI);
 
     const passI = document.createElement('input');
     passI.type = 'password';
     passI.value = host?.keyPassphrase ?? '';
-    passI.placeholder = 'Key passphrase (if encrypted)';
-    const passField = field('Key passphrase', passI);
+    passI.placeholder = tr('Key passphrase (if encrypted)');
+    const passField = field(tr('Key passphrase'), passI);
 
     const pwI = document.createElement('input');
     pwI.type = 'password';
     pwI.value = host?.password ?? '';
-    pwI.placeholder = 'Password';
-    const pwField = field('Password', pwI);
+    pwI.placeholder = tr('Password');
+    const pwField = field(tr('Password'), pwI);
 
     const colorWrap = document.createElement('div');
     colorWrap.className = 'swatches';
@@ -136,7 +137,7 @@ export function openHostEditor(host: main.Host | null) {
             const s = document.createElement('button');
             s.className = 'swatch' + (chosenColor === c ? ' on' : '') + (c === '' ? ' none' : '');
             if (c) s.style.background = c;
-            s.dataset.tip = c || 'Default';
+            s.dataset.tip = c || tr('Default');
             s.onclick = () => { chosenColor = c; renderSwatches(); };
             colorWrap.appendChild(s);
         }
@@ -145,14 +146,14 @@ export function openHostEditor(host: main.Host | null) {
     const colorField = document.createElement('div');
     colorField.className = 'field';
     const cl = document.createElement('label');
-    cl.textContent = 'Color';
+    cl.textContent = tr('Color');
     colorField.append(cl, colorWrap);
     grid.appendChild(colorField);
 
     const notesI = document.createElement('textarea');
     notesI.value = host?.notes ?? '';
-    notesI.placeholder = 'Notes';
-    field('Notes', notesI, true);
+    notesI.placeholder = tr('Notes');
+    field(tr('Notes'), notesI, true);
 
     body.appendChild(grid);
     modal.appendChild(body);
@@ -162,11 +163,11 @@ export function openHostEditor(host: main.Host | null) {
     const cancel = document.createElement('button');
     cancel.className = 'btn';
     cancel.type = 'button';
-    cancel.textContent = 'Cancel';
+    cancel.textContent = tr('Cancel');
     const save = document.createElement('button');
     save.className = 'btn primary';
     save.type = 'button';
-    save.textContent = host ? 'Save' : 'Add host';
+    save.textContent = host ? tr('Save') : tr('Add host');
     foot.append(cancel, save);
     modal.appendChild(foot);
 
@@ -205,7 +206,7 @@ export function openHostEditor(host: main.Host | null) {
             h.password = pwI.value;
         }
         if (!h.address || !h.user) {
-            toastError(new Error('Address and user are required'));
+            toastError(new Error(tr('Address and user are required')));
             return;
         }
         try {

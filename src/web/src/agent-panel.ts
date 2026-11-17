@@ -25,6 +25,7 @@ import { toastError } from './toast';
 import type { main } from '../wailsjs/go/models';
 import { toggleSettings, fullAccessEnabled, setFullAccess } from './settings';
 import { contextMenuAt, showMenuAt, confirmDialog, promptDialog, uiSwitch, type MenuEntry } from './ui';
+import { tr, count, dateLocale, getLang } from './i18n';
 
 hljs.registerLanguage('bash', bash);
 hljs.registerLanguage('shell', bash);
@@ -55,8 +56,8 @@ md.renderer.rules.fence = (tokens, idx) => {
     return '<div class="code-block" data-code="' + md.utils.escapeHtml(code) + '">' +
         '<div class="cb-head"><span class="cb-lang">' + md.utils.escapeHtml(langLabel) + '</span>' +
         '<span class="cb-actions">' +
-        '<button type="button" class="cb-btn" data-act="copy">' + icon('copy', 12).outerHTML + 'Copy</button>' +
-        '<button type="button" class="cb-btn" data-act="insert">' + icon('corner-down-left', 12).outerHTML + 'Insert</button>' +
+        '<button type="button" class="cb-btn" data-act="copy">' + icon('copy', 12).outerHTML + tr('Copy') + '</button>' +
+        '<button type="button" class="cb-btn" data-act="insert">' + icon('corner-down-left', 12).outerHTML + tr('Insert') + '</button>' +
         '</span></div>' +
         '<pre><code class="hljs language-' + md.utils.escapeHtml(langLabel) + '">' + highlighted + '</code></pre></div>';
 };
@@ -113,6 +114,7 @@ const EXAMPLES = [
 ];
 
 let built = false;
+let builtLang = '';
 let titleEl: HTMLElement | null = null;
 let chipEl: HTMLButtonElement | null = null;
 let modelEl: HTMLButtonElement | null = null;
@@ -155,8 +157,16 @@ function armSmoothWatchdog() {
 
 export function renderAgent() {
     const el = root();
+    const lang = getLang();
+    if (built && builtLang !== lang) {
+        built = false;
+        renderedChatId = '';
+        msgEls.clear();
+        pinned = true;
+    }
     if (!built) {
         built = true;
+        builtLang = lang;
         buildChrome(el);
     }
     updateChrome();
@@ -170,7 +180,7 @@ function buildChrome(el: HTMLElement) {
     titleWrap.className = 'ag-title-wrap';
     titleEl = document.createElement('div');
     titleEl.className = 'ag-title';
-    titleEl.title = 'Double-click to rename';
+    titleEl.title = tr('Double-click to rename');
     titleEl.ondblclick = () => startRename();
     chipEl = document.createElement('button');
     chipEl.className = 'ag-chip';
@@ -179,22 +189,22 @@ function buildChrome(el: HTMLElement) {
     modelEl = document.createElement('button');
     modelEl.className = 'ag-model';
     modelEl.type = 'button';
-    modelEl.dataset.tip = 'Agent settings';
+    modelEl.dataset.tip = tr('Agent settings');
     modelEl.onclick = () => toggleSettings('agent');
 
     chatBtn = document.createElement('button');
     chatBtn.className = 'ag-btn';
-    chatBtn.dataset.tip = 'Chats';
+    chatBtn.dataset.tip = tr('Chats');
     chatBtn.appendChild(icon('messages-square', 15));
     chatBtn.onclick = () => { state.chatListOpen = !state.chatListOpen; notify(); };
     const newBtn = document.createElement('button');
     newBtn.className = 'ag-btn';
-    newBtn.dataset.tip = 'New chat';
+    newBtn.dataset.tip = tr('New chat');
     newBtn.appendChild(icon('plus', 15));
     newBtn.onclick = () => { void createChat(); };
     const moreBtn = document.createElement('button');
     moreBtn.className = 'ag-btn';
-    moreBtn.dataset.tip = 'Chat actions';
+    moreBtn.dataset.tip = tr('Chat actions');
     moreBtn.appendChild(icon('ellipsis', 15));
     moreBtn.onclick = ev => chatMenu(ev);
     accessBtn = document.createElement('button');
@@ -208,11 +218,11 @@ function buildChrome(el: HTMLElement) {
     target.className = 'ag-target';
     const tlabel = document.createElement('span');
     tlabel.className = 'ag-target-label';
-    tlabel.textContent = 'Target: ';
+    tlabel.textContent = tr('Target: ');
     targetVal = document.createElement('b');
     accessBadge = document.createElement('span');
     accessBadge.className = 'ag-full-access';
-    accessBadge.textContent = 'full access';
+    accessBadge.textContent = tr('full access');
     accessBadge.hidden = true;
     target.append(tlabel, chipEl, targetVal, accessBadge);
     el.appendChild(target);
@@ -252,7 +262,7 @@ function buildChrome(el: HTMLElement) {
     const inputWrap = document.createElement('div');
     inputWrap.className = 'ag-input';
     const ta = document.createElement('textarea');
-    ta.placeholder = 'Message the agent';
+    ta.placeholder = tr('Message the agent');
     ta.rows = 1;
     ta.spellcheck = false;
     inputEl = ta;
@@ -289,17 +299,17 @@ function buildChrome(el: HTMLElement) {
 
 function updateChrome() {
     const s = settingsOrDefault();
-    if (modelEl) modelEl.textContent = s.ai?.model || 'no model';
+    if (modelEl) modelEl.textContent = s.ai?.model || tr('no model');
     const chat = activeChat();
     const sum = state.activeChatId ? chatSummary(state.activeChatId) : undefined;
-    if (titleEl) titleEl.textContent = sum?.title || 'New chat';
+    if (titleEl) titleEl.textContent = sum?.title || tr('New chat');
     if (chipEl) {
         chipEl.innerHTML = '';
         if (sum?.hostId) {
             const h = state.hosts.find(x => x.id === sum.hostId);
             chipEl.appendChild(icon('server', 12));
             const sp = document.createElement('span');
-            sp.textContent = h ? (h.name || h.user + '@' + h.address) : 'host';
+            sp.textContent = h ? (h.name || h.user + '@' + h.address) : tr('host');
             chipEl.appendChild(sp);
             chipEl.classList.add('attached');
             chipEl.onclick = ev => {
@@ -310,7 +320,7 @@ function updateChrome() {
         } else {
             chipEl.appendChild(icon('plus', 12));
             const sp = document.createElement('span');
-            sp.textContent = 'Attach to server';
+            sp.textContent = tr('Attach to server');
             chipEl.appendChild(sp);
             chipEl.classList.remove('attached');
             chipEl.onclick = ev => {
@@ -322,26 +332,28 @@ function updateChrome() {
     }
     const tid = state.activeChatId ? chatTargetSession(state.activeChatId) : agentTargetFallback();
     const targetTab = state.tabs.find(t => t.sessionId === tid);
-    if (targetVal) targetVal.textContent = targetTab ? targetTab.title : 'none';
+    if (targetVal) targetVal.textContent = targetTab ? targetTab.title : tr('none');
     if (chatBtn) chatBtn.classList.toggle('active', state.chatListOpen);
     const full = fullAccessEnabled();
     if (accessBtn) {
         accessBtn.innerHTML = '';
         accessBtn.appendChild(icon(full ? 'shield-off' : 'shield-check', 15));
         accessBtn.classList.toggle('danger', full);
-        accessBtn.dataset.tip = full ? 'Full access on — commands run without approval' : 'Full access — run commands without approval';
+        accessBtn.dataset.tip = full
+            ? tr('Full access on — commands run without approval')
+            : tr('Full access — run commands without approval');
     }
     if (accessBadge) accessBadge.hidden = !full;
 
     if (sendBtn) {
         sendBtn.innerHTML = '';
         if (chat?.busy) {
-            sendBtn.dataset.tip = 'Stop agent';
+            sendBtn.dataset.tip = tr('Stop agent');
             sendBtn.dataset.tipKeys = 'Esc';
             sendBtn.appendChild(icon('square', 14));
             sendBtn.onclick = () => { if (state.activeChatId) void App.AgentStop(state.activeChatId); };
         } else {
-            sendBtn.dataset.tip = 'Send';
+            sendBtn.dataset.tip = tr('Send');
             sendBtn.dataset.tipKeys = 'Enter';
             sendBtn.appendChild(icon('send', 15));
             sendBtn.onclick = () => { if (inputEl) sendAgentMessage(inputEl.value); };
@@ -398,11 +410,11 @@ function updatePill() {
     pillEl.appendChild(icon('arrow-down', 12));
     const sp = document.createElement('span');
     if (newCount > 0) {
-        sp.textContent = newCount + (newCount === 1 ? ' new message' : ' new messages');
-        pillEl.dataset.tip = 'Jump to the newest message and follow the agent';
+        sp.textContent = count(newCount, '1 new message', '{n} new messages');
+        pillEl.dataset.tip = tr('Jump to the newest message and follow the agent');
     } else {
-        sp.textContent = 'Resume autoscroll';
-        pillEl.dataset.tip = 'Jump to the newest message and follow the agent again';
+        sp.textContent = tr('Resume autoscroll');
+        pillEl.dataset.tip = tr('Jump to the newest message and follow the agent again');
     }
     pillEl.append(sp);
 }
@@ -520,7 +532,7 @@ function buildEmpty(): HTMLElement {
     wrap.className = 'ag-empty';
     const hint = document.createElement('div');
     hint.className = 'msg system-note';
-    hint.textContent = 'Ask the agent to inspect hosts, run commands, or manage sessions. It types into the terminal you see.';
+    hint.textContent = tr('Ask the agent to inspect hosts, run commands, or manage sessions. It types into the terminal you see.');
     wrap.appendChild(hint);
     const list = document.createElement('div');
     list.className = 'ag-examples';
@@ -528,8 +540,9 @@ function buildEmpty(): HTMLElement {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'ag-example';
-        b.textContent = ex;
-        b.onclick = () => sendAgentMessage(ex);
+        const label = tr(ex);
+        b.textContent = label;
+        b.onclick = () => sendAgentMessage(label);
         list.appendChild(b);
     }
     wrap.appendChild(list);
@@ -552,9 +565,9 @@ async function toggleFullAccess() {
         return;
     }
     const ok = await confirmDialog({
-        title: 'Enable full access',
-        message: 'The agent will run commands and change hosts without asking for approval. Continue?',
-        confirmLabel: 'Enable',
+        title: tr('Enable full access'),
+        message: tr('The agent will run commands and change hosts without asking for approval. Continue?'),
+        confirmLabel: tr('Enable'),
         danger: true,
     });
     if (ok) await setFullAccess(true);
@@ -564,24 +577,24 @@ function chatMenu(ev: MouseEvent) {
     const sum = state.activeChatId ? chatSummary(state.activeChatId) : undefined;
     if (!sum) return;
     const items: MenuEntry[] = [
-        { label: 'Rename', icon: 'pencil', onSelect: () => startRename() },
-        { label: 'Attach to server', icon: 'server', onSelect: () => attachMenuAt(sum.hostId) },
-        { label: 'Move to group', icon: 'folder', onSelect: () => moveGroupMenu(sum.id) },
+        { label: tr('Rename'), icon: 'pencil', onSelect: () => startRename() },
+        { label: tr('Attach to server'), icon: 'server', onSelect: () => attachMenuAt(sum.hostId) },
+        { label: tr('Move to group'), icon: 'folder', onSelect: () => moveGroupMenu(sum.id) },
         { sep: true },
         sum.archived
-            ? { label: 'Unarchive', icon: 'archive-restore', onSelect: () => void App.ArchiveChat(sum.id, false).catch(toastError) }
-            : { label: 'Archive', icon: 'archive', onSelect: () => void App.ArchiveChat(sum.id, true).catch(toastError) },
+            ? { label: tr('Unarchive'), icon: 'archive-restore', onSelect: () => void App.ArchiveChat(sum.id, false).catch(toastError) }
+            : { label: tr('Archive'), icon: 'archive', onSelect: () => void App.ArchiveChat(sum.id, true).catch(toastError) },
         { sep: true },
-        { label: 'Delete', icon: 'trash-2', danger: true, onSelect: () => void deleteChat(sum.id) },
+        { label: tr('Delete'), icon: 'trash-2', danger: true, onSelect: () => void deleteChat(sum.id) },
     ];
     contextMenuAt(items, ev);
 }
 
 async function deleteChat(id: string) {
     const ok = await confirmDialog({
-        title: 'Delete chat',
-        message: 'Delete this chat and its history?',
-        confirmLabel: 'Delete',
+        title: tr('Delete chat'),
+        message: tr('Delete this chat and its history?'),
+        confirmLabel: tr('Delete'),
         danger: true,
     });
     if (!ok) return;
@@ -601,15 +614,15 @@ function moveGroupMenu(chatId: string) {
     }));
     items.push(
         { sep: true },
-        { label: 'New group', icon: 'plus', onSelect: () => void newGroup(chatId) },
-        { label: 'No group', icon: 'x', onSelect: () => void App.SetChatGroup(chatId, '').catch(toastError) },
+        { label: tr('New group'), icon: 'plus', onSelect: () => void newGroup(chatId) },
+        { label: tr('No group'), icon: 'x', onSelect: () => void App.SetChatGroup(chatId, '').catch(toastError) },
     );
     const r = root().getBoundingClientRect();
     showMenuAt(items, r.right - 200, r.top + 60, '12rem');
 }
 
 async function newGroup(chatId: string) {
-    const res = await promptDialog({ title: 'New group', label: 'Group name', confirmLabel: 'Create' });
+    const res = await promptDialog({ title: tr('New group'), label: tr('Group name'), confirmLabel: tr('Create') });
     if (!res || !res.value.trim()) return;
     try {
         await App.SetChatGroup(chatId, res.value.trim());
@@ -634,7 +647,7 @@ function attachMenu(ev: { clientX: number; clientY: number }, currentHostId: str
     }));
     if (items.length) items.push({ sep: true });
     items.push({
-        label: 'Detach',
+        label: tr('Detach'),
         icon: 'unlink',
         disabled: !currentHostId,
         onSelect: () => {
@@ -698,8 +711,12 @@ function syncUsage(chat: ChatView | null) {
     nums.textContent = fmtNum(u.lastPromptTokens) + ' / ' + fmtNum(win);
     const spent = document.createElement('span');
     spent.className = 'usage-spent';
-    spent.textContent = 'Spent ' + fmtNum(u.totalTokens);
-    const detail = `In ${fmtNum(u.promptTokens)} · Out ${fmtNum(u.completionTokens)} · Last request ${fmtNum(u.lastPromptTokens)}`;
+    spent.textContent = tr('Spent {tokens}', { tokens: fmtNum(u.totalTokens) });
+    const detail = tr('In {in} · Out {out} · Last request {last}', {
+        in: fmtNum(u.promptTokens),
+        out: fmtNum(u.completionTokens),
+        last: fmtNum(u.lastPromptTokens),
+    });
     usageEl.dataset.tip = detail;
     usageEl.append(ring, nums, spent);
 }
@@ -830,7 +847,7 @@ function onMsgsClick(ev: MouseEvent) {
     } else if (btn.dataset.act === 'insert') {
         const sid = state.activeChatId ? chatTargetSession(state.activeChatId) : agentTargetFallback();
         if (!sid) {
-            toastError(new Error('No active session to insert into'));
+            toastError(new Error(tr('No active session to insert into')));
             return;
         }
         App.Write(sid, code).catch(toastError);
@@ -847,7 +864,7 @@ function toolEl(t: ToolCard): HTMLElement {
     const statusIcon = icon(statusIconName(t.status), 14);
     const name = document.createElement('span');
     name.className = 'tool-name';
-    name.textContent = TOOL_LABELS[t.name] ?? t.name;
+    name.textContent = tr(TOOL_LABELS[t.name] ?? t.name);
     const status = document.createElement('span');
     status.className = 'tool-status ' + t.status;
     status.textContent = statusLabel(t.status);
@@ -893,11 +910,11 @@ function toolEl(t: ToolCard): HTMLElement {
         actions.className = 'tool-actions';
         const approve = document.createElement('button');
         approve.className = 'btn primary';
-        approve.textContent = 'Approve';
+        approve.textContent = tr('Approve');
         approve.onclick = ev => { ev.stopPropagation(); void App.AgentApprove(t.callId, true); };
         const reject = document.createElement('button');
         reject.className = 'btn';
-        reject.textContent = 'Reject';
+        reject.textContent = tr('Reject');
         reject.onclick = ev => { ev.stopPropagation(); void App.AgentApprove(t.callId, false); };
         actions.append(approve, reject);
         card.appendChild(actions);
@@ -934,12 +951,12 @@ function statusIconName(status: string): string {
 
 function statusLabel(status: string): string {
     switch (status) {
-        case 'pending_approval': return 'approval needed';
-        case 'running': return 'running';
-        case 'done': return 'done';
-        case 'error': return 'error';
-        case 'rejected': return 'rejected';
-        default: return status || 'pending';
+        case 'pending_approval': return tr('approval needed');
+        case 'running': return tr('running');
+        case 'done': return tr('done');
+        case 'error': return tr('error');
+        case 'rejected': return tr('rejected');
+        default: return tr(status || 'pending');
     }
 }
 
@@ -949,10 +966,16 @@ function toolArgsPreview(t: ToolCard): string {
         if (t.name === 'run_command' || t.name === 'send_keys') {
             return (args.command ?? args.keys ?? '').toString();
         }
-        if (t.name === 'connect') return 'host: ' + (args.host_id ?? '');
+        if (t.name === 'connect') return tr('host: {host}', { host: args.host_id ?? '' });
         if (t.name === 'quick_connect') return args.target ?? '';
-        if (t.name === 'read_screen') return 'session: ' + (args.session_id ?? '') + (args.lines ? ', lines: ' + args.lines : '');
-        if (t.name === 'disconnect' || t.name === 'focus_session' || t.name === 'delete_host') return 'id: ' + (args.session_id ?? args.id ?? '');
+        if (t.name === 'read_screen') {
+            return args.lines
+                ? tr('session: {session}, lines: {lines}', { session: args.session_id ?? '', lines: args.lines })
+                : tr('session: {session}', { session: args.session_id ?? '' });
+        }
+        if (t.name === 'disconnect' || t.name === 'focus_session' || t.name === 'delete_host') {
+            return tr('id: {id}', { id: args.session_id ?? args.id ?? '' });
+        }
         if (t.name === 'set_theme') return args.theme_id ?? '';
         if (t.name === 'update_settings') return JSON.stringify(args.settings ?? {});
         const s = JSON.stringify(args);
@@ -992,6 +1015,7 @@ function chatListModel() {
     const archived = state.chatList.filter(c => c.archived && (!filtering || c.hostId === hostId) && (!q || (c.title || '').toLowerCase().includes(q)));
     const rowSig = (c: main.ChatSummary) => [c.id, c.title, c.group, hostName(c.hostId), !!c.busy, relTime(c.updatedAt)];
     const sig = JSON.stringify([
+        getLang(),
         state.chatListLoading,
         filtering ? hostId : '',
         q,
@@ -1028,7 +1052,7 @@ function syncChatList() {
     top.className = 'cl-top';
     const search = document.createElement('input');
     search.className = 'cl-search';
-    search.placeholder = 'Search chats';
+    search.placeholder = tr('Search chats');
     search.spellcheck = false;
     search.value = clSearch;
     search.oninput = () => { clSearch = search.value; syncChatListPreserve(search); };
@@ -1045,7 +1069,7 @@ function syncChatList() {
     const filterRow = document.createElement('div');
     filterRow.className = 'cl-filter';
     const fs = document.createElement('span');
-    fs.textContent = 'This server only';
+    fs.textContent = tr('This server only');
     const sw = uiSwitch(model.filtering, v => { clFilter = v; clListSig = ''; syncChatList(); });
     filterRow.append(fs, sw);
     listEl.appendChild(filterRow);
@@ -1063,7 +1087,7 @@ function syncChatList() {
         head.type = 'button';
         head.appendChild(icon(collapsed ? 'chevron-right' : 'chevron-down', 12));
         const gt = document.createElement('span');
-        gt.textContent = name || 'Chats';
+        gt.textContent = name || tr('Chats');
         head.appendChild(gt);
         const cnt = document.createElement('span');
         cnt.className = 'cl-count';
@@ -1095,7 +1119,7 @@ function syncChatList() {
         head.type = 'button';
         head.appendChild(icon(clArchOpen ? 'chevron-down' : 'chevron-right', 12));
         const gt = document.createElement('span');
-        gt.textContent = 'Archived';
+        gt.textContent = tr('Archived');
         head.appendChild(gt);
         const cnt = document.createElement('span');
         cnt.className = 'cl-count';
@@ -1140,13 +1164,13 @@ function syncChatListPreserve(search: HTMLInputElement) {
 
 function relTime(ts: number): string {
     const d = Date.now() - ts;
-    if (d < 60_000) return 'just now';
-    if (d < 3600_000) return Math.floor(d / 60_000) + ' min ago';
-    if (d < 86400_000) return Math.floor(d / 3600_000) + ' h ago';
+    if (d < 60_000) return tr('just now');
+    if (d < 3600_000) return count(Math.floor(d / 60_000), '1 min ago', '{n} min ago');
+    if (d < 86400_000) return count(Math.floor(d / 3600_000), '1 h ago', '{n} h ago');
     const days = Math.floor(d / 86400_000);
-    if (days === 1) return 'Yesterday';
-    if (days < 7) return days + ' days ago';
-    return new Date(ts).toLocaleDateString();
+    if (days === 1) return tr('Yesterday');
+    if (days < 7) return count(days, '1 day ago', '{n} days ago');
+    return new Date(ts).toLocaleDateString(dateLocale());
 }
 
 function chatRow(c: main.ChatSummary, hostName: (id: string) => string): HTMLElement {
@@ -1156,11 +1180,11 @@ function chatRow(c: main.ChatSummary, hostName: (id: string) => string): HTMLEle
     main.className = 'cl-row-main';
     const title = document.createElement('div');
     title.className = 'cl-row-title';
-    title.textContent = c.title || 'New chat';
+    title.textContent = c.title || tr('New chat');
     const sub = document.createElement('div');
     sub.className = 'cl-row-sub';
     const parts: string[] = [];
-    if (c.hostId) parts.push(hostName(c.hostId) || 'host');
+    if (c.hostId) parts.push(hostName(c.hostId) || tr('host'));
     parts.push(relTime(c.updatedAt));
     sub.textContent = parts.join(' · ');
     main.append(title, sub);
@@ -1180,15 +1204,15 @@ function chatRow(c: main.ChatSummary, hostName: (id: string) => string): HTMLEle
     };
     row.oncontextmenu = ev => {
         const items: MenuEntry[] = [
-            { label: 'Open', icon: 'message-square', onSelect: () => { void selectChat(c.id); } },
-            { label: 'Rename', icon: 'pencil', onSelect: () => { void selectChat(c.id).then(startRename); } },
-            { label: 'Move to group', icon: 'folder', onSelect: () => moveGroupMenu(c.id) },
-            { label: 'Attach to server', icon: 'server', onSelect: () => attachToChatMenu(c.id, ev) },
+            { label: tr('Open'), icon: 'message-square', onSelect: () => { void selectChat(c.id); } },
+            { label: tr('Rename'), icon: 'pencil', onSelect: () => { void selectChat(c.id).then(startRename); } },
+            { label: tr('Move to group'), icon: 'folder', onSelect: () => moveGroupMenu(c.id) },
+            { label: tr('Attach to server'), icon: 'server', onSelect: () => attachToChatMenu(c.id, ev) },
             { sep: true },
             c.archived
-                ? { label: 'Unarchive', icon: 'archive-restore', onSelect: () => void App.ArchiveChat(c.id, false).catch(toastError) }
-                : { label: 'Archive', icon: 'archive', onSelect: () => void App.ArchiveChat(c.id, true).catch(toastError) },
-            { label: 'Delete', icon: 'trash-2', danger: true, onSelect: () => void deleteChat(c.id) },
+                ? { label: tr('Unarchive'), icon: 'archive-restore', onSelect: () => void App.ArchiveChat(c.id, false).catch(toastError) }
+                : { label: tr('Archive'), icon: 'archive', onSelect: () => void App.ArchiveChat(c.id, true).catch(toastError) },
+            { label: tr('Delete'), icon: 'trash-2', danger: true, onSelect: () => void deleteChat(c.id) },
         ];
         contextMenuAt(items, ev);
     };
@@ -1202,7 +1226,7 @@ function attachToChatMenu(chatId: string, ev: MouseEvent) {
         onSelect: () => void App.AttachChat(chatId, h.id).catch(toastError),
     }));
     if (items.length) items.push({ sep: true });
-    items.push({ label: 'Detach', icon: 'unlink', onSelect: () => void App.AttachChat(chatId, '').catch(toastError) });
+    items.push({ label: tr('Detach'), icon: 'unlink', onSelect: () => void App.AttachChat(chatId, '').catch(toastError) });
     contextMenuAt(items, ev);
 }
 

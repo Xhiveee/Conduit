@@ -8,6 +8,7 @@ import * as App from '../wailsjs/go/main/App';
 import { state, settingsOrDefault, themeSettings, applyTermOptions, connectHost, retryTab, reconnectTab, onTabClosed, fitTab, activeTab, ensureTermFont, writeTermData, type Tab } from './state';
 import { currentXtermTheme } from './themes';
 import { icon } from './icons';
+import { tr } from './i18n';
 import { toastError } from './toast';
 import { openHostEditor } from './host-editor';
 import { importSSHConfig } from './sidebar';
@@ -90,7 +91,7 @@ function renderConnecting(tab: Tab) {
     sub.className = 'tc-sub';
     sub.appendChild(icon('loader', 14));
     const sp = document.createElement('span');
-    sp.textContent = 'Connecting…';
+    sp.textContent = tr('Connecting…');
     sub.appendChild(sp);
     box.append(prog, name, sub);
     frame.appendChild(box);
@@ -180,14 +181,14 @@ function syncDiscBar(tab: Tab) {
         reason.className = 'disc-reason';
         const btn = document.createElement('button');
         btn.className = 'btn small';
-        btn.textContent = 'Reconnect';
+        btn.textContent = tr('Reconnect');
         btn.onclick = () => { void reconnectTab(tab); };
         bar.append(reason, btn);
         frame.appendChild(bar);
     }
     bar.classList.toggle('reconnecting', !!tab.reconnecting);
     const reason = bar.querySelector('.disc-reason') as HTMLElement;
-    reason.textContent = tab.reconnecting ? 'Reconnecting…' : (tab.closedReason || 'Disconnected');
+    reason.textContent = tab.reconnecting ? tr('Reconnecting…') : (tab.closedReason || tr('Disconnected'));
     if (tab.closedDetail && !tab.reconnecting) reason.dataset.tip = tab.closedDetail;
     else delete reason.dataset.tip;
     const btn = bar.querySelector('.btn') as HTMLElement | null;
@@ -236,7 +237,7 @@ export function toggleSearch() {
     box.className = 'term-search no-drag';
     const input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = 'Search';
+    input.placeholder = tr('Search');
     input.spellcheck = false;
     const count = document.createElement('span');
     count.className = 'ts-count';
@@ -257,12 +258,12 @@ export function toggleSearch() {
         }
         const opts = searchDecoOptions();
         const found = prev ? tab.search!.findPrevious(q, opts) : tab.search!.findNext(q, opts);
-        if (!found) count.textContent = 'No match';
+        if (!found) count.textContent = tr('No match');
     };
     tab.search.onDidChangeResults(r => {
         count.textContent = r.resultCount > 0
-            ? `${r.resultIndex + 1} of ${r.resultCount}`
-            : 'No match';
+            ? tr('{index} of {total}', { index: r.resultIndex + 1, total: r.resultCount })
+            : tr('No match');
     });
     input.addEventListener('input', () => doSearch(false));
     input.addEventListener('keydown', ev => {
@@ -278,9 +279,9 @@ export function toggleSearch() {
     box.append(
         input,
         count,
-        mkBtn('chevron-up', 'Previous (Shift+Enter)', () => doSearch(true)),
-        mkBtn('chevron-down', 'Next (Enter)', () => doSearch(false)),
-        mkBtn('x', 'Close (Esc)', () => closeSearch(tab, box!)),
+        mkBtn('chevron-up', tr('Previous (Shift+Enter)'), () => doSearch(true)),
+        mkBtn('chevron-down', tr('Next (Enter)'), () => doSearch(false)),
+        mkBtn('x', tr('Close (Esc)'), () => closeSearch(tab, box!)),
     );
     frame.appendChild(box);
     input.focus();
@@ -333,7 +334,7 @@ function renderError(tab: Tab) {
     msg.textContent = tab.error;
     const btn = document.createElement('button');
     btn.className = 'btn';
-    btn.textContent = 'Retry';
+    btn.textContent = tr('Retry');
     btn.onclick = () => { void retryTab(tab); };
     box.append(iconEl, msg, btn);
     frame.appendChild(box);
@@ -357,17 +358,17 @@ function renderEmpty() {
     if (state.hosts.length === 0) {
         const hint = document.createElement('div');
         hint.className = 'empty-hint';
-        hint.textContent = 'Press Enter to connect. Keys from ~/.ssh and the ssh agent are tried automatically.';
+        hint.textContent = tr('Press Enter to connect. Keys from ~/.ssh and the ssh agent are tried automatically.');
         el.appendChild(hint);
         const btns = document.createElement('div');
         btns.className = 'empty-actions';
         const newBtn = document.createElement('button');
         newBtn.className = 'btn primary';
-        newBtn.textContent = 'New host';
+        newBtn.textContent = tr('New host');
         newBtn.onclick = () => openHostEditor(null);
         const importBtn = document.createElement('button');
         importBtn.className = 'btn';
-        importBtn.textContent = 'Import ssh config';
+        importBtn.textContent = tr('Import ssh config');
         importBtn.onclick = () => { void importSSHConfig(); };
         btns.append(newBtn, importBtn);
         el.appendChild(btns);
@@ -376,7 +377,7 @@ function renderEmpty() {
 
     const title = document.createElement('div');
     title.className = 'empty-title';
-    title.textContent = 'or connect to a host';
+    title.textContent = tr('or connect to a host');
     el.appendChild(title);
 
     const grid = document.createElement('div');

@@ -1,6 +1,7 @@
 import type { Terminal } from '@xterm/xterm';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { SearchAddon } from '@xterm/addon-search';
+import { applyLanguage, localizeShell, tr } from './i18n';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import * as App from '../wailsjs/go/main/App';
 import type { main } from '../wailsjs/go/models';
@@ -264,6 +265,8 @@ export function themeSettings() {
 
 export function applyAll() {
     const s = settingsOrDefault();
+    applyLanguage(s.language);
+    localizeShell();
     applyTheme(resolveTheme(themeSettings()));
     document.body.classList.toggle('agent-right', s.agentSide !== 'left');
     document.body.classList.toggle('agent-left', s.agentSide === 'left');
@@ -362,7 +365,7 @@ function wireEvents() {
         const tab = tabBySession(id);
         if (tab) {
             tab.connected = false;
-            tab.closedReason = reason || 'Disconnected';
+            tab.closedReason = reason || tr('Disconnected');
             tab.closedDetail = detail || '';
         }
         notify();
@@ -541,7 +544,7 @@ function errText(err: unknown): string {
 }
 
 function authPromptLabel(kind: string, label: string): string {
-    return (kind === 'passphrase' ? 'Key passphrase for ' : 'Password for ') + label;
+    return kind === 'passphrase' ? tr('Key passphrase for {host}', { host: label }) : tr('Password for {host}', { host: label });
 }
 
 function authKind(err: unknown): string {
@@ -558,10 +561,10 @@ async function connectHostInner(host: main.Host, dims: { cols: number; rows: num
         const msg = errText(err);
         const label = host.name || host.user + '@' + host.address;
         const res = await promptDialog({
-            title: 'Authentication required',
+            title: tr('Authentication required'),
             label: authPromptLabel(kind, label),
             password: true,
-            checkboxLabel: 'Save to host',
+            checkboxLabel: tr('Save to host'),
         });
         if (res === null) return { error: msg };
         try {
@@ -581,7 +584,7 @@ async function quickConnectInner(target: string, password: string, dims: { cols:
         if (!kind) return { error: errText(err) };
         const msg = errText(err);
         const res = await promptDialog({
-            title: 'Authentication required',
+            title: tr('Authentication required'),
             label: authPromptLabel(kind, target),
             password: true,
         });
@@ -653,14 +656,14 @@ export async function reconnectTab(tab: Tab) {
     if (tab.reconnecting || tab.error) return;
     const dims = currentDims();
     tab.reconnecting = true;
-    tab.term?.write('\x1b[2m\r\n—— connection lost, reconnecting ——\x1b[0m\r\n');
+    tab.term?.write('\x1b[2m\r\n—— ' + tr('connection lost, reconnecting') + ' ——\x1b[0m\r\n');
     notify();
     let res: ConnResult;
     if (tab.hostId) {
         const host = state.hosts.find(h => h.id === tab.hostId);
         if (!host) {
             tab.reconnecting = false;
-            toastError(new Error('saved host no longer exists'));
+            toastError(new Error(tr('saved host no longer exists')));
             return;
         }
         res = await connectHostInner(host, dims);

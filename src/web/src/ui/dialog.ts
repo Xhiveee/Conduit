@@ -1,4 +1,5 @@
 import { icon } from '../icons';
+import { tr } from '../i18n';
 import { pushLayer } from './layers';
 
 interface DialogEntry {
@@ -120,12 +121,12 @@ export function confirmDialog(opts: {
         const cancel = document.createElement('button');
         cancel.type = 'button';
         cancel.className = 'btn';
-        cancel.textContent = opts.cancelLabel ?? 'Cancel';
+        cancel.textContent = opts.cancelLabel ?? tr('Cancel');
         cancel.onclick = () => finish(false);
         const ok = document.createElement('button');
         ok.type = 'button';
         ok.className = 'btn ' + (opts.danger ? 'danger' : 'primary');
-        ok.textContent = opts.confirmLabel ?? 'Confirm';
+        ok.textContent = opts.confirmLabel ?? tr('Confirm');
         ok.onclick = () => finish(true);
         shell.foot.append(cancel, ok);
         ok.focus();
@@ -189,12 +190,12 @@ export function promptDialog(opts: {
         const cancel = document.createElement('button');
         cancel.type = 'button';
         cancel.className = 'btn';
-        cancel.textContent = 'Cancel';
+        cancel.textContent = tr('Cancel');
         cancel.onclick = () => finish(null);
         const ok = document.createElement('button');
         ok.type = 'button';
         ok.className = 'btn primary';
-        ok.textContent = opts.confirmLabel ?? 'OK';
+        ok.textContent = opts.confirmLabel ?? tr('OK');
         ok.onclick = () => finish({ value: input?.value ?? '', checked: !!check?.checked });
         shell.foot.append(cancel, ok);
         input?.focus();

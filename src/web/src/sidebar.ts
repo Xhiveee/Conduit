@@ -5,8 +5,10 @@ import { openHostEditor } from './host-editor';
 import { toastError, toastInfo } from './toast';
 import { confirmDialog } from './ui/dialog';
 import { contextMenuAt, showMenuAt, type MenuEntry } from './ui';
+import { tr, getLang } from './i18n';
 
 const root = () => document.getElementById('sidebar')!;
+let builtLang = '';
 
 let chromeBuilt = false;
 let listEl: HTMLElement | null = null;
@@ -16,8 +18,14 @@ const collapsed = new Set<string>();
 
 export function renderSidebar() {
     const el = root();
+    const lang = getLang();
+    if (chromeBuilt && builtLang !== lang) {
+        chromeBuilt = false;
+        lastSig = '';
+    }
     if (!chromeBuilt) {
         chromeBuilt = true;
+        builtLang = lang;
         el.innerHTML = '';
 
         const searchWrap = document.createElement('div');
@@ -25,7 +33,7 @@ export function renderSidebar() {
         const searchIcon = icon('search', 14);
         const search = document.createElement('input');
         search.type = 'text';
-        search.placeholder = 'Search hosts';
+        search.placeholder = tr('Search hosts');
         search.spellcheck = false;
         search.value = filterText;
         search.addEventListener('input', () => { filterText = search.value; renderList(true); });
@@ -36,12 +44,12 @@ export function renderSidebar() {
         actions.className = 'sb-actions';
         const newBtn = document.createElement('button');
         newBtn.className = 'sb-btn primary';
-        newBtn.append(icon('plus', 14), document.createTextNode('New host'));
+        newBtn.append(icon('plus', 14), document.createTextNode(tr('New host')));
         newBtn.onclick = () => openHostEditor(null);
         const importBtn = document.createElement('button');
         importBtn.className = 'sb-btn';
-        importBtn.dataset.tip = 'Import from ~/.ssh/config';
-        importBtn.append(icon('download', 14), document.createTextNode('Import'));
+        importBtn.dataset.tip = tr('Import from ~/.ssh/config');
+        importBtn.append(icon('download', 14), document.createTextNode(tr('Import')));
         importBtn.onclick = () => {
             importBtn.disabled = true;
             importBtn.replaceChildren();
@@ -50,7 +58,7 @@ export function renderSidebar() {
             importBtn.appendChild(sp);
             void importSSHConfig().finally(() => {
                 importBtn.disabled = false;
-                importBtn.replaceChildren(icon('download', 14), document.createTextNode('Import'));
+                importBtn.replaceChildren(icon('download', 14), document.createTextNode(tr('Import')));
             });
         };
         actions.append(newBtn, importBtn);
@@ -89,8 +97,8 @@ function renderList(force: boolean) {
         const empty = document.createElement('div');
         empty.className = 'sb-empty';
         empty.textContent = state.hosts.length === 0
-            ? 'No hosts yet. Add one or import your ssh config.'
-            : 'No hosts match your search.';
+            ? tr('No hosts yet. Add one or import your ssh config.')
+            : tr('No hosts match your search.');
         listEl.appendChild(empty);
     } else {
         const groups = new Map<string, typeof hosts>();
@@ -112,7 +120,7 @@ function renderList(force: boolean) {
             const isCollapsed = collapsed.has(group);
             head.append(
                 icon(isCollapsed ? 'chevron-right' : 'chevron-down', 13),
-                document.createTextNode(group === '' ? 'Hosts' : group),
+                document.createTextNode(group === '' ? tr('Hosts') : group),
             );
             const count = document.createElement('span');
             count.className = 'count';
@@ -143,7 +151,7 @@ function renderList(force: boolean) {
     keyHead.append(
         icon(keyCollapsed ? 'chevron-right' : 'chevron-down', 13),
         icon('key-round', 13),
-        document.createTextNode('Keys'),
+        document.createTextNode(tr('Keys')),
     );
     const kcount = document.createElement('span');
     kcount.className = 'count';
@@ -166,7 +174,7 @@ function renderList(force: boolean) {
             const none = document.createElement('div');
             none.className = 'sb-empty';
             none.style.padding = '8px 16px';
-            none.textContent = 'No keys found in ~/.ssh';
+            none.textContent = tr('No keys found in ~/.ssh');
             kinner.appendChild(none);
         }
         for (const k of state.keys) {
@@ -185,7 +193,7 @@ function renderList(force: boolean) {
             top.appendChild(nameEl);
             const meta = document.createElement('div');
             meta.className = 'kmeta';
-            meta.textContent = [k.type, k.fingerprint ? k.fingerprint.slice(0, 24) + '…' : '', k.encrypted ? 'encrypted' : ''].filter(Boolean).join(' · ');
+            meta.textContent = [k.type, k.fingerprint ? k.fingerprint.slice(0, 24) + '…' : '', k.encrypted ? tr('encrypted') : ''].filter(Boolean).join(' · ');
             row.append(top, meta);
             row.tabIndex = 0;
             kinner.appendChild(row);
@@ -200,12 +208,12 @@ function hostAddress(h: (typeof state.hosts)[number]): string {
 
 function hostMenuItems(h: (typeof state.hosts)[number]): MenuEntry[] {
     return [
-        { label: 'Edit', icon: 'pencil', onSelect: () => openHostEditor(h) },
-        { label: 'Open chat', icon: 'message-square', onSelect: () => { void openChatForHost(h.id); } },
-        { label: 'Duplicate', icon: 'copy', onSelect: () => { void duplicateHost(h); } },
-        { label: 'Copy address', icon: 'clipboard', onSelect: () => { void navigator.clipboard.writeText(hostAddress(h)).catch(toastError); } },
+        { label: tr('Edit'), icon: 'pencil', onSelect: () => openHostEditor(h) },
+        { label: tr('Open chat'), icon: 'message-square', onSelect: () => { void openChatForHost(h.id); } },
+        { label: tr('Duplicate'), icon: 'copy', onSelect: () => { void duplicateHost(h); } },
+        { label: tr('Copy address'), icon: 'clipboard', onSelect: () => { void navigator.clipboard.writeText(hostAddress(h)).catch(toastError); } },
         { sep: true },
-        { label: 'Delete', icon: 'trash', danger: true, onSelect: () => { void deleteHost(h); } },
+        { label: tr('Delete'), icon: 'trash', danger: true, onSelect: () => { void deleteHost(h); } },
     ];
 }
 
@@ -236,7 +244,7 @@ function hostRow(h: (typeof state.hosts)[number]): HTMLElement {
     if (connected) {
         const live = document.createElement('span');
         live.className = 'hr-live';
-        live.dataset.tip = 'Connected';
+        live.dataset.tip = tr('Connected');
         row.appendChild(live);
     }
 
@@ -244,12 +252,12 @@ function hostRow(h: (typeof state.hosts)[number]): HTMLElement {
     actions.className = 'row-actions';
     const connectBtn = document.createElement('button');
     connectBtn.className = 'row-act';
-    connectBtn.dataset.tip = 'Connect';
+    connectBtn.dataset.tip = tr('Connect');
     connectBtn.appendChild(icon('plug', 14));
     connectBtn.onclick = ev => { ev.stopPropagation(); void connectHost(h); };
     const moreBtn = document.createElement('button');
     moreBtn.className = 'row-act';
-    moreBtn.dataset.tip = 'More';
+    moreBtn.dataset.tip = tr('More');
     moreBtn.appendChild(icon('more-horizontal', 14));
     moreBtn.onclick = ev => {
         ev.stopPropagation();
@@ -287,7 +295,7 @@ function hostRow(h: (typeof state.hosts)[number]): HTMLElement {
 }
 
 async function duplicateHost(h: (typeof state.hosts)[number]) {
-    const copy = { ...h, id: '', name: (h.name || h.address) + ' copy' };
+    const copy = { ...h, id: '', name: tr('{name} copy', { name: h.name || h.address }) };
     try {
         await App.SaveHost(copy);
         await refreshHosts();
@@ -298,9 +306,9 @@ async function duplicateHost(h: (typeof state.hosts)[number]) {
 
 async function deleteHost(h: (typeof state.hosts)[number]) {
     const ok = await confirmDialog({
-        title: 'Delete host',
-        message: `Delete host "${h.name || h.address}"?`,
-        confirmLabel: 'Delete',
+        title: tr('Delete host'),
+        message: tr('Delete host "{name}"?', { name: h.name || h.address }),
+        confirmLabel: tr('Delete'),
         danger: true,
     });
     if (!ok) return;
@@ -317,7 +325,7 @@ export async function importSSHConfig() {
         const added = (await App.ImportSSHConfig()) ?? [];
         await refreshHosts();
         if (added.length === 0) {
-            toastInfo('No new hosts found in ~/.ssh/config');
+            toastInfo(tr('No new hosts found in ~/.ssh/config'));
         }
     } catch (err) {
         toastError(err);

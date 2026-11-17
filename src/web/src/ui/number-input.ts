@@ -1,3 +1,5 @@
+import { tr } from '../i18n';
+
 export function uiNumber(opts: {
     value: number;
     min?: number;
@@ -14,7 +16,7 @@ export function uiNumber(opts: {
     dec.type = 'button';
     dec.className = 'ui-num-btn';
     dec.textContent = '−';
-    dec.setAttribute('aria-label', 'Decrease');
+    dec.setAttribute('aria-label', tr('Decrease'));
     const input = document.createElement('input');
     input.type = 'text';
     input.inputMode = 'decimal';
@@ -25,7 +27,7 @@ export function uiNumber(opts: {
     inc.type = 'button';
     inc.className = 'ui-num-btn';
     inc.textContent = '+';
-    inc.setAttribute('aria-label', 'Increase');
+    inc.setAttribute('aria-label', tr('Increase'));
     wrap.append(dec, input, inc);
 
     const step = opts.step ?? 1;

@@ -1,12 +1,21 @@
 import { state, activateTab, activeTab, closeTab, cycleTab, reconnectTab, retryTab, duplicateTab, moveTab, isTabClosing, type Tab } from './state';
 import { icon } from './icons';
 import { contextMenuAt, type MenuEntry } from './ui';
+import { tr, getLang } from './i18n';
 
 const bar = () => document.getElementById('tabbar')!;
 const els = new Map<string, HTMLElement>();
+let builtLang = '';
 
 export function renderTabs() {
     const el = bar();
+    const lang = getLang();
+    if (builtLang !== lang) {
+        builtLang = lang;
+        for (const node of els.values()) node.remove();
+        els.clear();
+        el.querySelector('.new-tab')?.remove();
+    }
     const seen = new Set<string>();
     state.tabs.forEach((tab, i) => {
         seen.add(tab.key);
@@ -34,7 +43,7 @@ export function renderTabs() {
         if (tab.agentActive && !agentTag) {
             const ag = document.createElement('span');
             ag.className = 't-agent';
-            ag.textContent = 'Agent typing';
+            ag.textContent = tr('Agent typing');
             node.insertBefore(ag, node.querySelector('.t-close'));
         } else if (!tab.agentActive && agentTag) {
             agentTag.remove();
@@ -51,7 +60,7 @@ export function renderTabs() {
     if (!add) {
         add = document.createElement('button');
         add.className = 'tab new-tab';
-        add.dataset.tip = 'New quick connect';
+        add.dataset.tip = tr('New quick connect');
         add.dataset.tipKeys = 'Ctrl+Shift+T';
         add.appendChild(icon('plus', 15));
         add.onclick = () => focusQuickConnect();
@@ -92,15 +101,15 @@ function tabEl(tab: Tab): HTMLElement {
     el.oncontextmenu = ev => {
         const items: MenuEntry[] = [];
         if (tab.error && tab.pending) {
-            items.push({ label: 'Retry', icon: 'rotate-ccw', onSelect: () => { void retryTab(tab); } });
+            items.push({ label: tr('Retry'), icon: 'rotate-ccw', onSelect: () => { void retryTab(tab); } });
         } else if (tab.sessionId && !tab.connected) {
-            items.push({ label: 'Reconnect', icon: 'rotate-ccw', onSelect: () => { void reconnectTab(tab); } });
+            items.push({ label: tr('Reconnect'), icon: 'rotate-ccw', onSelect: () => { void reconnectTab(tab); } });
         }
         items.push(
-            { label: 'Duplicate session', icon: 'copy', onSelect: () => { void duplicateTab(tab); } },
+            { label: tr('Duplicate session'), icon: 'copy', onSelect: () => { void duplicateTab(tab); } },
             { sep: true },
-            { label: 'Close', icon: 'x', shortcut: 'Ctrl+Shift+W', onSelect: () => closeTab(tab.key) },
-            { label: 'Close others', icon: 'x', onSelect: () => closeOthers(tab.key) },
+            { label: tr('Close'), icon: 'x', shortcut: 'Ctrl+Shift+W', onSelect: () => closeTab(tab.key) },
+            { label: tr('Close others'), icon: 'x', onSelect: () => closeOthers(tab.key) },
         );
         contextMenuAt(items, ev);
     };

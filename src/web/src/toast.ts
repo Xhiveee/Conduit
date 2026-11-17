@@ -1,6 +1,8 @@
+import { translateError } from './i18n';
+
 export function toastError(err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    show(msg.replace(/^Error:\s*/i, ''), true);
+    show(translateError(msg), true);
 }
 
 export function toastInfo(message: string) {

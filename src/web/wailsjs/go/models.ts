@@ -246,6 +246,7 @@ export namespace main {
 	}
 	export class Settings {
 	    themeId: string;
+	    language: string;
 	    fontFamily: string;
 	    fontSize: number;
 	    fontWeight: number;
@@ -273,6 +274,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.themeId = source["themeId"];
+	        this.language = source["language"];
 	        this.fontFamily = source["fontFamily"];
 	        this.fontSize = source["fontSize"];
 	        this.fontWeight = source["fontWeight"];

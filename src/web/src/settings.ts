@@ -3,6 +3,7 @@ import { notify, applyAll, settingsOrDefault } from './state';
 import { BUILTIN_THEMES } from './themes';
 import { icon } from './icons';
 import { toastError, toastInfo } from './toast';
+import { tr, applyLanguage } from './i18n';
 import { uiSelect, uiSwitch, uiSlider, uiNumber } from './ui';
 import { openDialog } from './ui/dialog';
 import type { main } from '../wailsjs/go/models';
@@ -40,6 +41,7 @@ const SECTIONS: SettingsSection[] = [
 
 let settingsClose: (() => void) | null = null;
 let showSection: ((sec: SettingsSection) => void) | null = null;
+let relocalizeSettings: (() => void) | null = null;
 
 export function openSettings(initialSection?: string) {
     const modal = document.createElement('div');
@@ -48,7 +50,7 @@ export function openSettings(initialSection?: string) {
     const head = document.createElement('div');
     head.className = 'modal-head';
     const h2 = document.createElement('h2');
-    h2.textContent = 'Settings';
+    h2.textContent = tr('Settings');
     const closeBtn = document.createElement('button');
     closeBtn.className = 'x';
     closeBtn.type = 'button';
@@ -70,12 +72,14 @@ export function openSettings(initialSection?: string) {
     body.appendChild(layout);
 
     const closeDialog = openDialog(modal, {
-        onClose: () => { settingsClose = null; showSection = null; },
+        onClose: () => { settingsClose = null; showSection = null; relocalizeSettings = null; },
     });
     settingsClose = () => closeDialog();
     closeBtn.onclick = () => settingsClose?.();
 
+    let currentSection = SECTIONS[0];
     const show = (sec: SettingsSection) => {
+        currentSection = sec;
         nav.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.sec === sec.id));
         pane.innerHTML = '';
         pane.classList.remove('pane-in');
@@ -87,11 +91,19 @@ export function openSettings(initialSection?: string) {
     for (const sec of SECTIONS) {
         const b = document.createElement('button');
         b.type = 'button';
-        b.textContent = sec.label;
+        b.textContent = tr(sec.label);
         b.dataset.sec = sec.id;
         b.onclick = () => show(sec);
         nav.appendChild(b);
     }
+    relocalizeSettings = () => {
+        h2.textContent = tr('Settings');
+        nav.querySelectorAll('button').forEach(b => {
+            const sec = SECTIONS.find(x => x.id === b.dataset.sec);
+            if (sec) b.textContent = tr(sec.label);
+        });
+        show(currentSection);
+    };
     show(SECTIONS.find(s => s.id === initialSection) ?? SECTIONS[0]);
 }
 
@@ -149,7 +161,7 @@ function renderAppearance(pane: HTMLElement) {
         prev.append(bar1, bar2);
         const name = document.createElement('div');
         name.className = 'theme-name';
-        name.textContent = t.name;
+        name.textContent = tr(t.name);
         card.append(prev, name);
         card.onclick = () => {
             if (s.themeId === t.id) return;
@@ -161,6 +173,17 @@ function renderAppearance(pane: HTMLElement) {
     }
     g.appendChild(themes);
 
+    const langSel = uiSelect({
+        value: s.language || '',
+        options: [
+            { value: '', label: tr('Automatic') },
+            { value: 'en', label: 'English' },
+            { value: 'ru', label: 'Русский' },
+        ],
+        onChange: v => setLanguage(v),
+    });
+    g.appendChild(row(tr('Language'), tr('Interface language'), langSel));
+
     const scale = uiSlider({
         value: s.uiScale || 1,
         min: 0.8,
@@ -169,11 +192,11 @@ function renderAppearance(pane: HTMLElement) {
         format: v => v.toFixed(2) + '×',
         onInput: v => update({ uiScale: v }),
     });
-    g.appendChild(row('Interface scale', 'Scales the whole UI', scale));
+    g.appendChild(row(tr('Interface scale'), tr('Scales the whole UI'), scale));
 
     const sideSeg = document.createElement('div');
     sideSeg.className = 'seg';
-    for (const [v, label] of [['right', 'Right'], ['left', 'Left']] as const) {
+    for (const [v, label] of [['right', tr('Right')], ['left', tr('Left')]] as const) {
         const b = document.createElement('button');
         b.textContent = label;
         b.className = s.agentSide === v ? 'on' : '';
@@ -184,11 +207,11 @@ function renderAppearance(pane: HTMLElement) {
         };
         sideSeg.appendChild(b);
     }
-    g.appendChild(row('Agent panel side', '', sideSeg));
+    g.appendChild(row(tr('Agent panel side'), '', sideSeg));
 
-    g.appendChild(row('Sidebar', 'Show the host list', toggle(s.sidebarVisible, v => update({ sidebarVisible: v }))));
-    g.appendChild(row('Agent panel', 'Show the AI assistant', toggle(s.agentVisible, v => update({ agentVisible: v }))));
-    g.appendChild(row('Reduce motion', 'Minimize animations and transitions', toggle(!!s.reduceMotion, v => update({ reduceMotion: v }))));
+    g.appendChild(row(tr('Sidebar'), tr('Show the host list'), toggle(s.sidebarVisible, v => update({ sidebarVisible: v }))));
+    g.appendChild(row(tr('Agent panel'), tr('Show the AI assistant'), toggle(s.agentVisible, v => update({ agentVisible: v }))));
+    g.appendChild(row(tr('Reduce motion'), tr('Minimize animations and transitions'), toggle(!!s.reduceMotion, v => update({ reduceMotion: v }))));
 
     pane.appendChild(g);
 }
@@ -202,7 +225,7 @@ function renderTerminal(pane: HTMLElement) {
     fontI.style.width = '280px';
     fontI.className = 'mono';
     fontI.onchange = () => update({ fontFamily: fontI.value });
-    g.appendChild(row('Font family', '', fontI));
+    g.appendChild(row(tr('Font family'), '', fontI));
 
     const sizeI = uiNumber({
         value: s.fontSize,
@@ -211,7 +234,7 @@ function renderTerminal(pane: HTMLElement) {
         step: 1,
         onChange: v => update({ fontSize: v }),
     });
-    g.appendChild(row('Font size', 'Pixels', sizeI));
+    g.appendChild(row(tr('Font size'), tr('Pixels'), sizeI));
 
     const lhI = uiNumber({
         value: s.lineHeight,
@@ -220,7 +243,7 @@ function renderTerminal(pane: HTMLElement) {
         step: 0.05,
         onChange: v => update({ lineHeight: v }),
     });
-    g.appendChild(row('Line height', '', lhI));
+    g.appendChild(row(tr('Line height'), '', lhI));
 
     const weightSel = (val: number, set: (v: number) => void) => {
         let v = val || 400;
@@ -230,8 +253,8 @@ function renderTerminal(pane: HTMLElement) {
             onChange: o => { v = parseInt(o, 10); set(v); },
         });
     };
-    g.appendChild(row('Font weight', '', weightSel(s.fontWeight || 400, v => update({ fontWeight: v }))));
-    g.appendChild(row('Bold weight', '', weightSel(s.fontWeightBold || 600, v => update({ fontWeightBold: v }))));
+    g.appendChild(row(tr('Font weight'), '', weightSel(s.fontWeight || 400, v => update({ fontWeight: v }))));
+    g.appendChild(row(tr('Bold weight'), '', weightSel(s.fontWeightBold || 600, v => update({ fontWeightBold: v }))));
 
     const lsI = uiNumber({
         value: s.letterSpacing || 0,
@@ -240,16 +263,16 @@ function renderTerminal(pane: HTMLElement) {
         step: 0.5,
         onChange: v => update({ letterSpacing: v }),
     });
-    g.appendChild(row('Letter spacing', 'Pixels between characters', lsI));
+    g.appendChild(row(tr('Letter spacing'), tr('Pixels between characters'), lsI));
 
     const cursorSel = uiSelect({
         value: s.cursorStyle || 'bar',
-        options: [['bar', 'Bar'], ['block', 'Block'], ['underline', 'Underline']].map(([v, l]) => ({ value: v, label: l })),
+        options: [['bar', tr('Bar')], ['block', tr('Block')], ['underline', tr('Underline')]].map(([v, l]) => ({ value: v, label: l })),
         onChange: v => update({ cursorStyle: v }),
     });
-    g.appendChild(row('Cursor style', '', cursorSel));
+    g.appendChild(row(tr('Cursor style'), '', cursorSel));
 
-    g.appendChild(row('Cursor blink', '', toggle(s.cursorBlink, v => update({ cursorBlink: v }))));
+    g.appendChild(row(tr('Cursor blink'), '', toggle(s.cursorBlink, v => update({ cursorBlink: v }))));
 
     const scrollI = uiNumber({
         value: s.scrollback,
@@ -258,10 +281,10 @@ function renderTerminal(pane: HTMLElement) {
         step: 1000,
         onChange: v => update({ scrollback: v }),
     });
-    g.appendChild(row('Scrollback', 'Lines kept in history', scrollI));
+    g.appendChild(row(tr('Scrollback'), tr('Lines kept in history'), scrollI));
 
-    g.appendChild(row('Copy on select', '', toggle(s.copyOnSelect, v => update({ copyOnSelect: v }))));
-    g.appendChild(row('Right-click paste', '', toggle(s.rightClickPaste, v => update({ rightClickPaste: v }))));
+    g.appendChild(row(tr('Copy on select'), '', toggle(s.copyOnSelect, v => update({ copyOnSelect: v }))));
+    g.appendChild(row(tr('Right-click paste'), '', toggle(s.rightClickPaste, v => update({ rightClickPaste: v }))));
 
     pane.appendChild(g);
 }
@@ -279,7 +302,7 @@ function renderAgentSection(pane: HTMLElement) {
     const urlF = document.createElement('div');
     urlF.className = 'field full';
     const urlL = document.createElement('label');
-    urlL.textContent = 'Base URL';
+    urlL.textContent = tr('Base URL');
     urlF.append(urlL, urlI);
     g.appendChild(urlF);
 
@@ -288,12 +311,12 @@ function renderAgentSection(pane: HTMLElement) {
     keyI.value = s.ai.apiKey;
     keyI.className = 'mono';
     keyI.style.width = '100%';
-    keyI.placeholder = 'Empty for local servers like Ollama';
+    keyI.placeholder = tr('Empty for local servers like Ollama');
     keyI.onchange = () => { ai().apiKey = keyI.value; persistAI(); };
     const keyF = document.createElement('div');
     keyF.className = 'field full';
     const keyL = document.createElement('label');
-    keyL.textContent = 'API key';
+    keyL.textContent = tr('API key');
     keyF.append(keyL, keyI);
     g.appendChild(keyF);
 
@@ -305,7 +328,7 @@ function renderAgentSection(pane: HTMLElement) {
     const modelF = document.createElement('div');
     modelF.className = 'field';
     const modelL = document.createElement('label');
-    modelL.textContent = 'Model';
+    modelL.textContent = tr('Model');
     modelF.append(modelL, modelI);
     g.appendChild(modelF);
 
@@ -319,7 +342,7 @@ function renderAgentSection(pane: HTMLElement) {
     const stepsF = document.createElement('div');
     stepsF.className = 'field';
     const stepsL = document.createElement('label');
-    stepsL.textContent = 'Max steps';
+    stepsL.textContent = tr('Max steps');
     stepsF.append(stepsL, stepsI);
     g.appendChild(stepsF);
 
@@ -333,21 +356,21 @@ function renderAgentSection(pane: HTMLElement) {
     const ctxF = document.createElement('div');
     ctxF.className = 'field';
     const ctxL = document.createElement('label');
-    ctxL.textContent = 'Context window';
+    ctxL.textContent = tr('Context window');
     ctxF.append(ctxL, ctxI);
     g.appendChild(ctxF);
 
-    g.appendChild(row('Full access', 'Run commands and change hosts without asking for approval', toggle(fullAccessEnabled(), v => { void setFullAccess(v); })));
+    g.appendChild(row(tr('Full access'), tr('Run commands and change hosts without asking for approval'), toggle(fullAccessEnabled(), v => { void setFullAccess(v); })));
 
     const instI = document.createElement('textarea');
     instI.value = s.ai.instructions;
-    instI.placeholder = 'Extra instructions for the agent';
+    instI.placeholder = tr('Extra instructions for the agent');
     instI.style.width = '100%';
     instI.onchange = () => { ai().instructions = instI.value; persistAI(); };
     const instF = document.createElement('div');
     instF.className = 'field full';
     const instL = document.createElement('label');
-    instL.textContent = 'Instructions';
+    instL.textContent = tr('Instructions');
     instF.append(instL, instI);
     g.appendChild(instF);
 
@@ -356,6 +379,15 @@ function renderAgentSection(pane: HTMLElement) {
 
 function persistAI() {
     persist();
+}
+
+function setLanguage(value: string) {
+    const s = settingsOrDefault();
+    s.language = value;
+    applyLanguage(value);
+    persist();
+    notify();
+    relocalizeSettings?.();
 }
 
 export function fullAccessEnabled(): boolean {
@@ -369,7 +401,7 @@ export async function setFullAccess(enabled: boolean): Promise<void> {
     notify();
     try {
         await App.SaveSettings(s);
-        toastInfo(enabled ? 'Full access on — commands run without approval' : 'Approvals on');
+        toastInfo(enabled ? tr('Full access on — commands run without approval') : tr('Approvals on'));
     } catch (err) {
         s.ai.approveCommands = !s.ai.approveCommands;
         notify();
@@ -394,7 +426,7 @@ function renderKeyboard(pane: HTMLElement) {
     const g = group();
     const sub = document.createElement('div');
     sub.className = 'set-desc';
-    sub.textContent = 'Shortcuts work from anywhere, including while the terminal has focus.';
+    sub.textContent = tr('Shortcuts work from anywhere, including while the terminal has focus.');
     g.appendChild(sub);
     const list = document.createElement('div');
     list.className = 'kbd-list';
@@ -410,7 +442,7 @@ function renderKeyboard(pane: HTMLElement) {
         }
         const d = document.createElement('span');
         d.className = 'kbd-desc';
-        d.textContent = desc;
+        d.textContent = tr(desc);
         row.append(ks, d);
         list.appendChild(row);
     }

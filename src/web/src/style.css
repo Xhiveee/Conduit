@@ -1,17 +1,17 @@
 :root {
-    --bg: #0b0d12;
-    --surface-1: #10131b;
-    --surface-2: #171b25;
-    --surface-3: #212635;
-    --text: #e5e8f0;
-    --text-2: #a6adbe;
-    --text-3: #868ea1;
-    --accent: #82aaff;
-    --accent-ink: #0b1220;
-    --agent: #d6a656;
-    --danger: #e07a6e;
-    --border: rgba(255, 255, 255, 0.07);
-    --border-strong: rgba(255, 255, 255, 0.12);
+    --bg: #151517;
+    --surface-1: #1b1b1c;
+    --surface-2: #232324;
+    --surface-3: #2c2c2e;
+    --text: #f5f6f7;
+    --text-2: #b3b6ba;
+    --text-3: #8f9194;
+    --accent: #7aaaff;
+    --accent-ink: #10131b;
+    --agent: #d9a441;
+    --danger: #e06c60;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
     --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
     --font-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
     --radius-control: 0.5rem;
@@ -346,6 +346,7 @@ body.agent-left #center { order: 4; }
     font-size: 0.875rem;
     font-weight: 500;
     border: 1px solid var(--border);
+    white-space: nowrap;
 }
 .sb-btn:hover {
     background: var(--surface-3);
@@ -353,13 +354,13 @@ body.agent-left #center { order: 4; }
 }
 .sb-btn svg { width: 0.875rem; height: 0.875rem; stroke-width: 1.5; }
 .sb-btn.primary {
-    background: var(--accent);
-    color: var(--accent-ink);
-    border-color: transparent;
+    background: var(--surface-2);
+    color: var(--text);
+    border-color: var(--border-strong);
 }
 .sb-btn.primary:hover {
-    background: color-mix(in srgb, var(--accent) 88%, var(--text));
-    color: var(--accent-ink);
+    background: var(--surface-3);
+    color: var(--text);
 }
 
 .sb-list {
@@ -403,7 +404,7 @@ body.agent-left #center { order: 4; }
     position: relative;
 }
 .host-row:hover { background: var(--surface-2); }
-.host-row.active { background: var(--accent-soft); }
+.host-row.active { background: var(--surface-3); }
 .host-row .hr-dot {
     width: 0.375rem;
     height: 0.375rem;
@@ -513,7 +514,7 @@ body.agent-left #center { order: 4; }
     display: flex;
     align-items: stretch;
     height: 2.25rem;
-    background: var(--surface-1);
+    background: var(--bg);
     border-bottom: 1px solid var(--border);
     overflow-x: auto;
     overflow-y: hidden;
@@ -545,7 +546,21 @@ body.agent-left #center { order: 4; }
     height: 0.125rem;
     background: transparent;
 }
-.tab.active { background: var(--bg); }
+.tab::after {
+    content: "";
+    position: absolute;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0;
+    height: 0.125rem;
+    border-radius: 0.125rem 0.125rem 0 0;
+    background: transparent;
+}
+.tab .t-title { color: var(--text-2); }
+.tab:hover .t-title { color: var(--text); }
+.tab.active { background: transparent; }
+.tab.active .t-title { color: var(--text); }
+.tab.active::after { background: var(--accent); }
 .tab.has-color::before { background: var(--tab-color, var(--accent)); }
 .tab .t-dot {
     width: 0.375rem;
@@ -830,7 +845,7 @@ body.agent-left #center { order: 4; }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.ag-target .ag-chip { max-width: 8rem; }
+.ag-target .ag-chip { max-width: 10rem; }
 .ag-target-label { color: var(--text-3); flex-shrink: 0; }
 
 .ag-msgs {
@@ -974,18 +989,23 @@ body.agent-left #center { order: 4; }
     min-height: 2.5rem;
     max-height: 8.75rem;
     resize: none;
-    background: var(--surface-2);
+    background: transparent;
     border-color: transparent;
     font-size: 0.875rem;
     line-height: 1.5;
     padding: 0.5rem 0.75rem;
 }
-.ag-input textarea:focus { border-color: var(--border-strong); }
+.ag-input textarea:focus { border-color: transparent; }
 .ag-input-row {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    align-items: flex-end;
+    gap: 0.375rem;
+    padding: 0.25rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
 }
+.ag-input-row:focus-within { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .ag-hint {
     font-size: 0.75rem;
     color: var(--text-3);
@@ -996,7 +1016,7 @@ body.agent-left #center { order: 4; }
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    border-radius: var(--radius-control);
+    border-radius: 50%;
     background: var(--accent);
     color: var(--accent-ink);
     border: 1px solid transparent;

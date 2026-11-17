@@ -42,6 +42,7 @@ type AISettings struct {
 
 type Settings struct {
 	ThemeID         string     `json:"themeId"`
+	Language        string     `json:"language"`
 	FontFamily      string     `json:"fontFamily"`
 	FontSize        int        `json:"fontSize"`
 	FontWeight      int        `json:"fontWeight"`
