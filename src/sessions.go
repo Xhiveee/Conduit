@@ -1,4 +1,5 @@
 package main
+
 import (
 	"bytes"
 	"context"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 const (
@@ -60,10 +60,22 @@ type SessionManager struct {
 	mu         sync.Mutex
 	byID       map[string]*Session
 	screenReqs map[string]chan string
+
+	hostKeyMu      sync.Mutex
+	hostKeyWait    map[string]chan bool
+	hostKeyUpdates map[string]*hostKeyUpdate
+
+	knownHostsMu sync.Mutex
 }
 
 func NewSessionManager(store *Store) *SessionManager {
-	return &SessionManager{store: store, byID: make(map[string]*Session), screenReqs: make(map[string]chan string)}
+	return &SessionManager{
+		store:          store,
+		byID:           make(map[string]*Session),
+		screenReqs:     make(map[string]chan string),
+		hostKeyWait:    make(map[string]chan bool),
+		hostKeyUpdates: make(map[string]*hostKeyUpdate),
+	}
 }
 
 func (m *SessionManager) emitEvent(name string, args ...interface{}) {
@@ -178,13 +190,14 @@ func (m *SessionManager) connect(h Host, cols, rows int) (string, error) {
 		rows = 32
 	}
 	addr := net.JoinHostPort(h.Address, strconv.Itoa(h.Port))
-	cfg, cleanup, err := sshConfigFor(h)
+	ctx, cancel := context.WithTimeout(context.Background(), sshDialTimeout+hostKeyConfirmTimeout)
+	defer cancel()
+	cfg, cleanup, err := sshConfigFor(h, m, ctx)
 	if err != nil {
 		return "", authError(h, err)
 	}
 	defer cleanup()
-	cfg.Timeout = sshDialTimeout
-	client, err := ssh.Dial("tcp", addr, cfg)
+	client, err := dialSSH(ctx, "tcp", addr, cfg)
 	if err != nil {
 		return "", authError(h, err)
 	}
@@ -253,6 +266,29 @@ func (m *SessionManager) connect(h Host, cols, rows int) (string, error) {
 	go s.wait()
 	go s.keepalive()
 	return s.info.ID, nil
+}
+
+func dialSSH(ctx context.Context, network, addr string, cfg *ssh.ClientConfig) (*ssh.Client, error) {
+	dialer := net.Dialer{Timeout: sshDialTimeout}
+	conn, err := dialer.DialContext(ctx, network, addr)
+	if err != nil {
+		return nil, err
+	}
+	watchDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			conn.Close()
+		case <-watchDone:
+		}
+	}()
+	clientConn, chans, reqs, err := ssh.NewClientConn(conn, addr, cfg)
+	close(watchDone)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return ssh.NewClient(clientConn, chans, reqs), nil
 }
 
 func (s *Session) pump(r io.Reader) {
@@ -404,50 +440,6 @@ func (m *SessionManager) Disconnect(id string) {
 	}
 }
 
-func knownHostsPath() string {
-	return filepath.Join(dataDir(), "known_hosts")
-}
-
-func hostKeyCallback() (ssh.HostKeyCallback, error) {
-	path := knownHostsPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
-	}
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		if err := os.WriteFile(path, nil, 0o600); err != nil {
-			return nil, err
-		}
-	}
-	kh, err := knownhosts.New(path)
-	if err != nil {
-		return nil, err
-	}
-	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-		err := kh(hostname, remote, key)
-		if err == nil {
-			return nil
-		}
-		var kerr *knownhosts.KeyError
-		if errors.As(err, &kerr) {
-			if len(kerr.Want) == 0 {
-				line := knownhosts.Line([]string{hostname}, key)
-				f, ferr := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
-				if ferr != nil {
-					return ferr
-				}
-				if _, werr := f.WriteString(line + "\n"); werr != nil {
-					f.Close()
-					return werr
-				}
-				f.Close()
-				return nil
-			}
-			return fmt.Errorf("host key mismatch for %s", hostname)
-		}
-		return err
-	}, nil
-}
-
 func classifyAuthError(h Host, err error) string {
 	if err == nil {
 		return ""
@@ -493,8 +485,8 @@ func keyboardInteractivePassword(password string) ssh.AuthMethod {
 	})
 }
 
-func sshConfigFor(h Host) (*ssh.ClientConfig, func(), error) {
-	hkc, err := hostKeyCallback()
+func sshConfigFor(h Host, sessions *SessionManager, ctx context.Context) (*ssh.ClientConfig, func(), error) {
+	hkc, err := sessions.hostKeyCallback(ctx)
 	if err != nil {
 		return nil, nil, err
 	}

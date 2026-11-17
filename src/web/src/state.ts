@@ -7,7 +7,7 @@ import * as App from '../wailsjs/go/main/App';
 import type { main } from '../wailsjs/go/models';
 import { applyTheme, currentXtermTheme, resolveTheme } from './themes';
 import { toastError, toastInfo } from './toast';
-import { promptDialog } from './ui/dialog';
+import { confirmDialog, promptDialog } from './ui/dialog';
 
 export interface Tab {
     key: string;
@@ -209,6 +209,13 @@ export async function loadChat(id: string) {
                 seenTs.add(e.kind + ':' + e.ts);
             }
         }
+        if (d.truncated) {
+            v.entries.unshift({
+                id: nextMsgId(),
+                kind: 'note',
+                content: tr('Earlier messages are hidden to keep the chat responsive.'),
+            });
+        }
         for (const m of liveTail) {
             if (m.kind === 'tool' && m.tool) {
                 if (seenCalls.has(m.tool.callId)) continue;
@@ -336,11 +343,92 @@ export function applyTermOptions(tab: Tab) {
     tab.term.options.scrollback = s.scrollback;
 }
 
+interface HostKeyPrompt {
+    requestId: string;
+    hostname: string;
+    fingerprint: string;
+    oldFingerprint?: string;
+    kind: string;
+}
+
+type HostKeyBindings = {
+    SessionHostKeyDecision(requestID: string, trust: boolean): Promise<void>;
+    SessionHostKeyUpdate(requestID: string): Promise<void>;
+};
+
+function hostKeyBindings(): HostKeyBindings {
+    const app = (window as unknown as { go?: { main?: { App?: Partial<HostKeyBindings> } } }).go?.main?.App;
+    if (typeof app?.SessionHostKeyDecision !== 'function' || typeof app.SessionHostKeyUpdate !== 'function') {
+        throw new Error(tr('Host key confirmation is unavailable'));
+    }
+    return app as HostKeyBindings;
+}
+
+const hostKeyQueue: HostKeyPrompt[] = [];
+const hostKeyQueued = new Set<string>();
+let hostKeyPromptActive = false;
+
+function queueHostKeyPrompt(prompt: HostKeyPrompt) {
+    if (!prompt?.requestId || hostKeyQueued.has(prompt.requestId)) return;
+    hostKeyQueued.add(prompt.requestId);
+    hostKeyQueue.push(prompt);
+    if (!hostKeyPromptActive) void drainHostKeyPrompts();
+}
+
+async function drainHostKeyPrompts() {
+    hostKeyPromptActive = true;
+    try {
+        for (let prompt = hostKeyQueue.shift(); prompt; prompt = hostKeyQueue.shift()) {
+            try {
+                await resolveHostKeyPrompt(prompt);
+            } catch (err) {
+                toastError(err);
+            } finally {
+                hostKeyQueued.delete(prompt.requestId);
+            }
+        }
+    } finally {
+        hostKeyPromptActive = false;
+    }
+}
+
+async function resolveHostKeyPrompt(prompt: HostKeyPrompt) {
+    if (prompt.kind === 'changed') {
+        const update = await confirmDialog({
+            title: tr('Host key changed'),
+            message: tr(
+                'The host key for {host} has changed. Known: {known}. Presented: {presented}. Update the saved key only if you trust this change.',
+                { host: prompt.hostname, known: prompt.oldFingerprint || '', presented: prompt.fingerprint },
+            ),
+            confirmLabel: tr('Update key'),
+            danger: true,
+        });
+        if (update) {
+            await hostKeyBindings().SessionHostKeyUpdate(prompt.requestId);
+            toastInfo(tr('Host key updated. Reconnect to continue.'));
+        }
+        return;
+    }
+    const trust = await confirmDialog({
+        title: tr('Unknown host key'),
+        message: tr('The authenticity of {host} cannot be established. Fingerprint: {fingerprint}', {
+            host: prompt.hostname,
+            fingerprint: prompt.fingerprint,
+        }),
+        confirmLabel: tr('Trust'),
+        danger: true,
+    });
+    await hostKeyBindings().SessionHostKeyDecision(prompt.requestId, trust);
+}
+
 function wireEvents() {
     EventsOn('session:opened', (info: main.SessionInfo) => {
         upsertSessionTab(info);
         state.sessions = state.sessions.filter(s => s.id !== info.id).concat([info]);
         notify();
+    });
+    EventsOn('session:hostkey', (prompt: HostKeyPrompt) => {
+        queueHostKeyPrompt(prompt);
     });
     EventsOn('session:data', (id: string, b64: string) => {
         const tab = tabBySession(id);
