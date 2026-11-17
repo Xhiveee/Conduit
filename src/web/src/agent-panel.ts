@@ -200,6 +200,12 @@ function buildChrome(el: HTMLElement) {
     msgsEl = document.createElement('div');
     msgsEl.className = 'ag-msgs';
     msgsEl.addEventListener('scroll', onMsgsScroll, { passive: true });
+    msgsEl.addEventListener('wheel', ev => {
+        if (ev.deltaY < 0) {
+            pinned = false;
+            updatePill();
+        }
+    }, { passive: true });
     msgsEl.addEventListener('click', onMsgsClick);
     new ResizeObserver(() => {
         if (msgsEl && pinned) msgsEl.scrollTop = msgsEl.scrollHeight;
