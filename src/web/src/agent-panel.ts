@@ -131,6 +131,7 @@ let renderedChatId = '';
 let autoscrollQueued = false;
 let smoothToBottom = false;
 let smoothWatchdog = 0;
+let lastScrollTop = 0;
 
 function queueAutoscroll() {
     if (autoscrollQueued) return;
@@ -340,7 +341,10 @@ function agentTargetFallback(): string {
 
 function onMsgsScroll() {
     if (!msgsEl) return;
-    const dist = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight;
+    const top = msgsEl.scrollTop;
+    const dist = msgsEl.scrollHeight - top - msgsEl.clientHeight;
+    const movedUp = top < lastScrollTop - 1;
+    lastScrollTop = top;
     if (smoothToBottom) {
         if (dist <= 1) {
             smoothToBottom = false;
@@ -351,8 +355,17 @@ function onMsgsScroll() {
         updateFades();
         return;
     }
-    pinned = dist < 80;
-    if (pinned) newCount = 0;
+    if (dist <= 1) {
+        pinned = true;
+    } else if (movedUp && dist >= 80) {
+        pinned = false;
+    } else if (dist < 80) {
+        pinned = true;
+    }
+    if (pinned) {
+        newCount = 0;
+        queueAutoscroll();
+    }
     updatePill();
     updateFades();
 }
@@ -401,6 +414,7 @@ function syncMessages() {
         thinkingEl = null;
         smoothToBottom = false;
         window.clearTimeout(smoothWatchdog);
+        lastScrollTop = 0;
         pinned = true;
         newCount = 0;
         updatePill();
