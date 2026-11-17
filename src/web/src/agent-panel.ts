@@ -128,6 +128,16 @@ const msgEls = new Map<number, { el: HTMLElement; sig: string }>();
 let pinned = true;
 let newCount = 0;
 let renderedChatId = '';
+let autoscrollQueued = false;
+
+function queueAutoscroll() {
+    if (autoscrollQueued) return;
+    autoscrollQueued = true;
+    requestAnimationFrame(() => {
+        autoscrollQueued = false;
+        if (msgsEl && pinned) msgsEl.scrollTop = msgsEl.scrollHeight;
+    });
+}
 
 export function renderAgent() {
     const el = root();
@@ -194,6 +204,9 @@ function buildChrome(el: HTMLElement) {
     new ResizeObserver(() => {
         if (msgsEl && pinned) msgsEl.scrollTop = msgsEl.scrollHeight;
     }).observe(msgsEl);
+    new MutationObserver(() => {
+        if (msgsEl && pinned) queueAutoscroll();
+    }).observe(msgsEl, { childList: true, subtree: true, characterData: true });
     body.appendChild(msgsEl);
 
     pillEl = document.createElement('button');
@@ -392,9 +405,7 @@ function syncMessages() {
         newCount += 1;
         updatePill();
     }
-    if (pinned) {
-        requestAnimationFrame(() => { if (msgsEl) msgsEl.scrollTop = msgsEl.scrollHeight; });
-    }
+    if (pinned) queueAutoscroll();
     updateFades();
 }
 
